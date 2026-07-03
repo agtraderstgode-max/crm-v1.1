@@ -3,20 +3,27 @@ import cors from 'cors'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { createClient } from '@supabase/supabase-js'
 
 const app = express()
 const PORT = 5001
 
-// Setup directories
+// Setup local directories (as offline backup)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = path.join(__dirname, 'data')
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json')
+
+// Supabase configuration
+const SUPABASE_URL = 'https://emiwizejpibhvdoylbmb.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtaXdpemVqcGliaHZkb3lsYm1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwNzMzNTIsImV4cCI6MjA5ODY0OTM1Mn0.St_S4-7vGvLgsc41DVCbtMA_HBTe-bSmka_-fjndTis'
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 // Enable CORS and JSON parsing
 app.use(cors())
 app.use(express.json())
 
-// Ensure data folder and files exist
+// Ensure backup folder and files exist
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR)
 }
@@ -34,8 +41,8 @@ if (!fs.existsSync(LEADS_FILE)) {
   fs.writeFileSync(LEADS_FILE, JSON.stringify(INITIAL_LEADS, null, 2), 'utf-8')
 }
 
-// Read leads helper
-const getLeads = () => {
+// Local File DB helper
+const getLocalLeads = () => {
   try {
     const data = fs.readFileSync(LEADS_FILE, 'utf-8')
     return JSON.parse(data)
@@ -44,22 +51,89 @@ const getLeads = () => {
   }
 }
 
-// Write leads helper
-const saveLeads = (leads) => {
+const saveLocalLeads = (leads) => {
   fs.writeFileSync(LEADS_FILE, JSON.stringify(leads, null, 2), 'utf-8')
 }
 
 // API Routes
-app.get('/api/leads', (req, res) => {
-  res.json(getLeads())
+app.get('/api/leads', async (req, res) => {
+  try {
+    // Try to fetch from Supabase first
+    const { data, error } = await supabase
+      .from('leads')
+      .select('*')
+      .order('date', { ascending: false })
+
+    if (error) {
+      console.warn("⚠️ Supabase Fetch Error (falling back to local):", error.message)
+      return res.json(getLocalLeads())
+    }
+
+    console.log(`✅ Fetched ${data.length} leads from Supabase.`)
+    // Update local backup with Supabase data to stay sync
+    saveLocalLeads(data)
+    res.json(data)
+  } catch (err) {
+    console.warn("⚠️ Express Server Error (falling back to local):", err.message)
+    res.json(getLocalLeads())
+  }
 })
 
-app.post('/api/leads', (req, res) => {
+app.post('/api/leads', async (req, res) => {
   const newLead = req.body
-  const leads = getLeads()
-  leads.unshift(newLead)
-  saveLeads(leads)
-  res.status(201).json(newLead)
+  
+  // Clean values for Postgres structure (e.g. empty strings as null or default)
+  const postgresLead = {
+    id: newLead.id,
+    date: newLead.date || null,
+    name: newLead.name,
+    phone: newLead.phone,
+    location: newLead.location || null,
+    lat: newLead.lat ? parseFloat(newLead.lat) : null,
+    lng: newLead.lng ? parseFloat(newLead.lng) : null,
+    km: newLead.km ? parseFloat(newLead.km) : null,
+    source: newLead.source || null,
+    size: newLead.size || null,
+    budget: newLead.budget || null,
+    houseType: newLead.houseType || null,
+    custType: newLead.custType || null,
+    stage: newLead.stage || null,
+    expectedAmt: newLead.expectedAmt || null,
+    priority: newLead.priority || null,
+    status: newLead.status || null,
+    nextDate: newLead.nextDate || null,
+    withinDays: newLead.withinDays || null,
+    remarks: newLead.remarks || null
+  }
+
+  try {
+    // 1. Try to save to Supabase
+    const { data, error } = await supabase
+      .from('leads')
+      .insert([postgresLead])
+      .select()
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    console.log("✅ Successfully saved new lead to Supabase.")
+    // 2. Also save to local backup
+    const localLeads = getLocalLeads()
+    localLeads.unshift(postgresLead)
+    saveLocalLeads(localLeads)
+
+    res.status(201).json(postgresLead)
+  } catch (err) {
+    console.warn("⚠️ Supabase Save Error (saved to local backup instead):", err.message)
+    
+    // Save locally
+    const localLeads = getLocalLeads()
+    localLeads.unshift(postgresLead)
+    saveLocalLeads(localLeads)
+    
+    res.status(201).json(postgresLead)
+  }
 })
 
 app.listen(PORT, () => {
