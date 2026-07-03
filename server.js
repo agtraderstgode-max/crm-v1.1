@@ -135,6 +135,45 @@ app.get('/api/leads', async (req, res) => {
 
 app.post('/api/leads', async (req, res) => {
   const newLead = req.body
+  
+  // Calculate next sequential Lead ID
+  let nextNum = 1
+  try {
+    const { data: existingLeads, error: fetchErr } = await supabase
+      .from('leads')
+      .select('id')
+
+    if (!fetchErr && existingLeads) {
+      const nums = existingLeads
+        .map(l => {
+          const match = l.id.match(/^L(\d+)$/i)
+          return match ? parseInt(match[1]) : 0
+        })
+      const maxNum = Math.max(...nums, 0)
+      nextNum = maxNum + 1
+    } else {
+      const localLeads = getLocalLeads()
+      const nums = localLeads
+        .map(l => {
+          const match = l.id.match(/^L(\d+)$/i)
+          return match ? parseInt(match[1]) : 0
+        })
+      const maxNum = Math.max(...nums, 0)
+      nextNum = maxNum + 1
+    }
+  } catch (err) {
+    const localLeads = getLocalLeads()
+    const nums = localLeads
+      .map(l => {
+        const match = l.id.match(/^L(\d+)$/i)
+        return match ? parseInt(match[1]) : 0
+      })
+    const maxNum = Math.max(...nums, 0)
+    nextNum = maxNum + 1
+  }
+
+  const formattedId = `L${String(nextNum).padStart(3, '0')}`
+  newLead.id = formattedId
   const postgresLead = mapToPostgres(newLead)
 
   try {
@@ -147,7 +186,7 @@ app.post('/api/leads', async (req, res) => {
       throw new Error(error.message)
     }
 
-    console.log("✅ Successfully saved new lead to Supabase.")
+    console.log(`✅ Successfully saved new lead ${formattedId} to Supabase.`)
     
     // Save to local backup in camelCase format
     const localLeads = getLocalLeads()

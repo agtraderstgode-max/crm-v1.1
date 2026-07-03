@@ -684,8 +684,11 @@ export function LeadsPage() {
           <table className="w-full text-sm min-w-[960px]">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {['Lead ID','Date','Customer','Location / KM','Source','Building','Priority','Status','Next Follow-up',''].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                {['Lead ID','Date','Customer','Next Follow-up','Within Days','Location / KM','Source','Building','Priority','Status',''].map(h => (
+                  <th key={h} className={cn(
+                    'px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap',
+                    h === 'Within Days' ? 'text-center' : 'text-left'
+                  )}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -707,6 +710,23 @@ export function LeadsPage() {
                       </div>
                     </div>
                   </td>
+                  
+                  {/* Next Follow-up Date */}
+                  <td className="px-4 py-3 text-xs text-slate-600 font-semibold whitespace-nowrap">
+                    {lead.nextDate || <span className="text-slate-300">—</span>}
+                  </td>
+
+                  {/* Within Days */}
+                  <td className="px-4 py-3 text-xs text-center whitespace-nowrap">
+                    {lead.withinDays ? (
+                      <span className="inline-block rounded bg-blue-50 border border-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">
+                        {lead.withinDays} days
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
+
                   <td className="px-4 py-3">
                     <p className="flex items-center gap-1 text-slate-600 text-xs">
                       <MapPin className="h-3 w-3 text-slate-400 flex-shrink-0" />{lead.location}
@@ -727,9 +747,6 @@ export function LeadsPage() {
                     <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap', STATUS_STYLE[lead.status] || 'bg-slate-100 text-slate-500')}>
                       {lead.status}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
-                    {lead.nextDate || <span className="text-slate-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
                     <button className="text-xs font-medium text-blue-600 hover:underline whitespace-nowrap">Edit</button>
