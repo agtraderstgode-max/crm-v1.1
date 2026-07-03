@@ -55,10 +55,60 @@ const saveLocalLeads = (leads) => {
   fs.writeFileSync(LEADS_FILE, JSON.stringify(leads, null, 2), 'utf-8')
 }
 
+// Mappers to handle PostgreSQL case-insensitive/lowercase naming convention vs frontend camelCase
+const mapToPostgres = (lead) => {
+  return {
+    id: lead.id,
+    date: lead.date || null,
+    name: lead.name,
+    phone: lead.phone,
+    location: lead.location || null,
+    lat: lead.lat ? parseFloat(lead.lat) : null,
+    lng: lead.lng ? parseFloat(lead.lng) : null,
+    km: lead.km ? parseFloat(lead.km) : null,
+    source: lead.source || null,
+    size: lead.size || null,
+    budget: lead.budget || null,
+    housetype: lead.houseType || null,
+    custtype: lead.custType || null,
+    stage: lead.stage || null,
+    expectedamt: lead.expectedAmt || null,
+    priority: lead.priority || null,
+    status: lead.status || null,
+    nextdate: lead.nextDate || null,
+    withindays: lead.withinDays || null,
+    remarks: lead.remarks || null
+  }
+}
+
+const mapFromPostgres = (lead) => {
+  return {
+    id: lead.id,
+    date: lead.date || '',
+    name: lead.name,
+    phone: lead.phone,
+    location: lead.location || '',
+    lat: lead.lat || '',
+    lng: lead.lng || '',
+    km: lead.km || '',
+    source: lead.source || '',
+    size: lead.size || '',
+    budget: lead.budget || '',
+    houseType: lead.housetype || '',
+    custType: lead.custtype || '',
+    stage: lead.stage || '',
+    expectedAmt: lead.expectedamt || '',
+    priority: lead.priority || 'Medium',
+    status: lead.status || 'New Entry',
+    nextDate: lead.nextdate || '',
+    withinDays: lead.withindays || '',
+    remarks: lead.remarks || ''
+  }
+}
+
 // API Routes
 app.get('/api/leads', async (req, res) => {
   try {
-    // Try to fetch from Supabase first
     const { data, error } = await supabase
       .from('leads')
       .select('*')
@@ -70,9 +120,13 @@ app.get('/api/leads', async (req, res) => {
     }
 
     console.log(`✅ Fetched ${data.length} leads from Supabase.`)
+    
+    // Map Postgres lowercase keys to camelCase keys for React frontend
+    const mapped = data.map(mapFromPostgres)
+    
     // Update local backup with Supabase data to stay sync
-    saveLocalLeads(data)
-    res.json(data)
+    saveLocalLeads(mapped)
+    res.json(mapped)
   } catch (err) {
     console.warn("⚠️ Express Server Error (falling back to local):", err.message)
     res.json(getLocalLeads())
@@ -81,33 +135,9 @@ app.get('/api/leads', async (req, res) => {
 
 app.post('/api/leads', async (req, res) => {
   const newLead = req.body
-  
-  // Clean values for Postgres structure (e.g. empty strings as null or default)
-  const postgresLead = {
-    id: newLead.id,
-    date: newLead.date || null,
-    name: newLead.name,
-    phone: newLead.phone,
-    location: newLead.location || null,
-    lat: newLead.lat ? parseFloat(newLead.lat) : null,
-    lng: newLead.lng ? parseFloat(newLead.lng) : null,
-    km: newLead.km ? parseFloat(newLead.km) : null,
-    source: newLead.source || null,
-    size: newLead.size || null,
-    budget: newLead.budget || null,
-    houseType: newLead.houseType || null,
-    custType: newLead.custType || null,
-    stage: newLead.stage || null,
-    expectedAmt: newLead.expectedAmt || null,
-    priority: newLead.priority || null,
-    status: newLead.status || null,
-    nextDate: newLead.nextDate || null,
-    withinDays: newLead.withinDays || null,
-    remarks: newLead.remarks || null
-  }
+  const postgresLead = mapToPostgres(newLead)
 
   try {
-    // 1. Try to save to Supabase
     const { data, error } = await supabase
       .from('leads')
       .insert([postgresLead])
@@ -118,21 +148,22 @@ app.post('/api/leads', async (req, res) => {
     }
 
     console.log("✅ Successfully saved new lead to Supabase.")
-    // 2. Also save to local backup
+    
+    // Save to local backup in camelCase format
     const localLeads = getLocalLeads()
-    localLeads.unshift(postgresLead)
+    localLeads.unshift(newLead)
     saveLocalLeads(localLeads)
 
-    res.status(201).json(postgresLead)
+    res.status(201).json(newLead)
   } catch (err) {
     console.warn("⚠️ Supabase Save Error (saved to local backup instead):", err.message)
     
-    // Save locally
+    // Save to local backup in camelCase format
     const localLeads = getLocalLeads()
-    localLeads.unshift(postgresLead)
+    localLeads.unshift(newLead)
     saveLocalLeads(localLeads)
     
-    res.status(201).json(postgresLead)
+    res.status(201).json(newLead)
   }
 })
 
