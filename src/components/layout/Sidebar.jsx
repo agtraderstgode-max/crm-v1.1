@@ -14,6 +14,8 @@ import {
   Settings,
   ChevronRight,
   Building2,
+  ShoppingBag,
+  CreditCard,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -29,6 +31,7 @@ const NAV_GROUPS = [
       { label: 'Enquiry - Lead', icon: TrendingUp,    to: '/leads' },
       { label: 'Customers',      icon: Users,          to: '/customers' },
       { label: 'Follow-ups',     icon: CalendarCheck,  to: '/followups' },
+      { label: 'Buying Now',     icon: ShoppingBag,    to: '/buying-now' },
     ],
   },
   {
@@ -36,6 +39,7 @@ const NAV_GROUPS = [
     items: [
       { label: 'Quotations',  icon: FileText,       to: '/quotations' },
       { label: 'Orders',      icon: ShoppingCart,   to: '/orders' },
+      { label: 'Payments',    icon: CreditCard,     to: '/payments' },
       { label: 'Billing',     icon: Receipt,        to: '/billing' },
     ],
   },

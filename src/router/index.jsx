@@ -6,8 +6,10 @@ import { DashboardPage }   from '@/modules/dashboard/pages/DashboardPage'
 import { CustomersPage }   from '@/modules/crm/customers/pages/CustomersPage'
 import { LeadsPage }       from '@/modules/crm/leads/pages/LeadsPage'
 import { FollowupsPage }   from '@/modules/crm/followups/pages/FollowupsPage'
+import { BuyingNowPage }   from '@/modules/crm/buyingnow/pages/BuyingNowPage'
 import { QuotationsPage }  from '@/modules/sales/quotations/pages/QuotationsPage'
 import { OrdersPage }      from '@/modules/sales/orders/pages/OrdersPage'
+import { PaymentsPage }    from '@/modules/sales/payments/pages/PaymentsPage'
 import { BillingPage }     from '@/modules/sales/billing/pages/BillingPage'
 import { ProductsPage }    from '@/modules/inventory/products/pages/ProductsPage'
 import { StockPage }       from '@/modules/inventory/stock/pages/StockPage'
@@ -28,11 +30,13 @@ export const router = createBrowserRouter([
       // CRM module
       { path: 'customers',  element: <CustomersPage /> },
       { path: 'leads',      element: <LeadsPage /> },
-      { path: 'followups',  element: <FollowupsPage /> },
+      { path: 'followups',   element: <FollowupsPage /> },
+      { path: 'buying-now',  element: <BuyingNowPage /> },
 
       // Sales module
       { path: 'quotations', element: <QuotationsPage /> },
       { path: 'orders',     element: <OrdersPage /> },
+      { path: 'payments',   element: <PaymentsPage /> },
       { path: 'billing',    element: <BillingPage /> },
 
       // Inventory module

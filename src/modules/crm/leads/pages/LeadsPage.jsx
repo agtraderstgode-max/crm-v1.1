@@ -11,6 +11,7 @@ const CUSTOMER_TYPES = ['Owner','Builder','Contractor','Architect']
 const STAGES = ['Planning','Construction Started','Flooring Stage','Immediate Requirement']
 const PRIORITIES = ['High','Medium','Low']
 const STATUSES_LIST = ['New Entry','Keep Tracking 2x','Keep Tracking 3x','Keep Tracking 4x','Customer Bought','Lost Customer']
+const STAFF_LIST = ['Manager', 'Staff 1', 'Staff 2', 'Staff 3']
 
 // Showroom coordinates (AG TRADERS, TIRUCHENGODE)
 const SHOWROOM_LAT = 11.3477
@@ -164,15 +165,52 @@ function NameAutocomplete({ value, onChange, onSelect, leads }) {
   )
 }
 
-function AddLeadDrawer({ open, onClose, onSave, leads }) {
+function AddLeadDrawer({ open, onClose, onSave, leads, lead }) {
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({
     date: today, name: '', phone: '', location: '',
     lat: '', lng: '', km: '', withinDays: '',
     source: '', size: '', budget: '', houseType: '',
     custType: '', stage: '', expectedAmt: '', priority: 'Medium',
-    status: 'New Entry', nextDate: '', remarks: '',
+    status: 'New Entry', nextDate: '', remarks: '', attendedBy: '',
   })
+
+  // Sync editing lead details if opening in edit mode
+  useEffect(() => {
+    if (lead) {
+      setForm({
+        id: lead.id,
+        date: lead.date || today,
+        name: lead.name || '',
+        phone: lead.phone || '',
+        location: lead.location || '',
+        lat: lead.lat || '',
+        lng: lead.lng || '',
+        km: lead.km || '',
+        withinDays: lead.withinDays || '',
+        source: lead.source || '',
+        size: lead.size || '',
+        budget: lead.budget || '',
+        houseType: lead.houseType || '',
+        custType: lead.custType || '',
+        stage: lead.stage || '',
+        expectedAmt: lead.expectedAmt || '',
+        priority: lead.priority || 'Medium',
+        status: lead.status || 'New Entry',
+        nextDate: lead.nextDate || '',
+        remarks: lead.remarks || '',
+        attendedBy: lead.attendedBy || '',
+      })
+    } else {
+      setForm({
+        date: today, name: '', phone: '', location: '',
+        lat: '', lng: '', km: '', withinDays: '',
+        source: '', size: '', budget: '', houseType: '',
+        custType: '', stage: '', expectedAmt: '', priority: 'Medium',
+        status: 'New Entry', nextDate: '', remarks: '', attendedBy: '',
+      })
+    }
+  }, [lead, open])
 
   const set = (k, v) => {
     setForm(prev => {
@@ -186,9 +224,8 @@ function AddLeadDrawer({ open, onClose, onSave, leads }) {
 
   const handleSave = () => {
     if (!form.name || !form.phone) return
-    onSave({ ...form, id: `L${String(Date.now()).slice(-4)}` })
+    onSave(form)
     onClose()
-    setForm({ date: today, name: '', phone: '', location: '', lat: '', lng: '', km: '', withinDays: '', source: '', size: '', budget: '', houseType: '', custType: '', stage: '', expectedAmt: '', priority: 'Medium', status: 'New Entry', nextDate: '', remarks: '' })
   }
 
   return (
@@ -207,8 +244,8 @@ function AddLeadDrawer({ open, onClose, onSave, leads }) {
         {/* Drawer Header */}
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4 flex-shrink-0">
           <div>
-            <h2 className="text-base font-bold text-slate-800">Add New Enquiry / Lead</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Fill in customer details and enquiry info</p>
+            <h2 className="text-base font-bold text-slate-800">{lead ? `Edit Enquiry / Lead: ${lead.id}` : 'Add New Enquiry / Lead'}</h2>
+            <p className="text-xs text-slate-400 mt-0.5">{lead ? 'Update lead and follow-up details' : 'Fill in customer details and enquiry info'}</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors">
             <X className="h-5 w-5" />
@@ -535,7 +572,29 @@ function AddLeadDrawer({ open, onClose, onSave, leads }) {
             )}
           </div>
 
-          {/* Section 7 — Remarks */}
+          {/* Section 7 — Attended By */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <FieldLabel text="Lead Attended By" />
+            <div className="flex flex-wrap gap-2 mt-1">
+              {STAFF_LIST.map(staff => (
+                <button
+                  key={staff}
+                  type="button"
+                  onClick={() => set('attendedBy', form.attendedBy === staff ? '' : staff)}
+                  className={cn(
+                    'rounded-lg border px-4 py-2 text-sm font-semibold transition-all',
+                    form.attendedBy === staff
+                      ? 'bg-violet-600 border-violet-600 text-white shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-violet-300 hover:text-violet-700'
+                  )}
+                >
+                  {staff}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Section 8 — Remarks */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
             <FieldLabel text="Remarks / Notes" />
             <textarea
@@ -573,8 +632,12 @@ export function LeadsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('All Status')
+  const [activeTab, setActiveTab] = useState('active')
+  const [sortField, setSortField] = useState(null)
+  const [sortOrder, setSortOrder] = useState(null)
   const [filterSource, setFilterSource] = useState('All Sources')
   const [loading, setLoading] = useState(true)
+  const [selectedLead, setSelectedLead] = useState(null)
 
   // Fetch leads from Express backend
   useEffect(() => {
@@ -591,43 +654,111 @@ export function LeadsPage() {
   }, [])
 
   const handleSave = (lead) => {
-    fetch('/api/leads', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(lead)
-    })
-      .then(res => res.json())
-      .then(savedLead => {
-        setLeads(prev => [savedLead, ...prev])
+    if (lead.id) {
+      // Edit mode: PUT update
+      fetch(`/api/leads/${lead.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lead)
       })
-      .catch(err => console.error("Error saving lead:", err))
+        .then(res => res.json())
+        .then(updatedLead => {
+          setLeads(prev => prev.map(l => l.id === lead.id ? updatedLead : l))
+          setSelectedLead(null)
+        })
+        .catch(err => console.error("Error updating lead:", err))
+    } else {
+      // Create mode: POST insert
+      fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lead)
+      })
+        .then(res => res.json())
+        .then(savedLead => {
+          setLeads(prev => [savedLead, ...prev])
+        })
+        .catch(err => console.error("Error saving new lead:", err))
+    }
   }
 
-  const filtered = leads.filter(l => {
+  const handleSort = (field) => {
+    if (sortField === field) {
+      if (sortOrder === 'asc') setSortOrder('desc')
+      else {
+        setSortField(null)
+        setSortOrder(null)
+      }
+    } else {
+      setSortField(field)
+      setSortOrder('asc')
+    }
+  }
+
+  // Tab-level filter
+  const ACTIVE_STATUSES = ['New Entry', 'Keep Tracking 2x', 'Keep Tracking 3x', 'Keep Tracking 4x']
+  const tabFiltered = leads.filter(l => {
+    if (activeTab === 'active') return ACTIVE_STATUSES.includes(l.status)
+    if (activeTab === 'won')    return l.status === 'Customer Bought'
+    if (activeTab === 'lost')   return l.status === 'Lost Customer'
+    return true // 'all'
+  })
+
+  const filtered = tabFiltered.filter(l => {
     const q = search.toLowerCase()
-    const matchSearch = l.name.toLowerCase().includes(q) || l.phone.includes(q) || l.location.toLowerCase().includes(q)
+    const matchSearch = l.name.toLowerCase().includes(q) || l.phone.includes(q) || (l.location || '').toLowerCase().includes(q)
     const matchStatus = filterStatus === 'All Status' || l.status === filterStatus
     const matchSource = filterSource === 'All Sources' || l.source === filterSource
     return matchSearch && matchStatus && matchSource
   })
 
+  const sortedLeads = [...filtered].sort((a, b) => {
+    if (!sortField || !sortOrder) return 0
+
+    let valA = a[sortField]
+    let valB = b[sortField]
+
+    if (sortField === 'km') {
+      valA = a.km !== '' && !isNaN(a.km) ? parseFloat(a.km) : 999999
+      valB = b.km !== '' && !isNaN(b.km) ? parseFloat(b.km) : 999999
+    }
+    else if (sortField === 'withinDays') {
+      valA = a.withinDays !== '' && !isNaN(a.withinDays) ? parseInt(a.withinDays) : 999999
+      valB = b.withinDays !== '' && !isNaN(b.withinDays) ? parseInt(b.withinDays) : 999999
+    }
+    else if (sortField === 'priority') {
+      const pmap = { High: 3, Medium: 2, Low: 1 }
+      valA = pmap[a.priority] || 0
+      valB = pmap[b.priority] || 0
+    }
+    else {
+      valA = (valA || '').toString().toLowerCase()
+      valB = (valB || '').toString().toLowerCase()
+    }
+
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1
+    return 0
+  })
+
+  const ACTIVE_STATUSES_COUNT = ['New Entry', 'Keep Tracking 2x', 'Keep Tracking 3x', 'Keep Tracking 4x']
   const counts = {
     total:  leads.length,
-    active: leads.filter(l => !['Customer Bought','Lost Customer'].includes(l.status)).length,
+    active: leads.filter(l => ACTIVE_STATUSES_COUNT.includes(l.status)).length,
     won:    leads.filter(l => l.status === 'Customer Bought').length,
     lost:   leads.filter(l => l.status === 'Lost Customer').length,
   }
 
   return (
     <>
-      <AddLeadDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} onSave={handleSave} leads={leads} />
+      <AddLeadDrawer open={drawerOpen} onClose={() => { setDrawerOpen(false); setSelectedLead(null); }} onSave={handleSave} leads={leads} lead={selectedLead} />
 
       <div className="space-y-5">
         {/* ── Header ── */}
         <div className="flex items-center gap-4">
           {/* Add Lead button — LEFT side */}
           <button
-            onClick={() => setDrawerOpen(true)}
+            onClick={() => { setSelectedLead(null); setDrawerOpen(true); }}
             className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors shadow-sm flex-shrink-0"
           >
             <Plus className="h-4 w-4" /> Add Enquiry / Lead
@@ -639,17 +770,35 @@ export function LeadsPage() {
           </div>
         </div>
 
-        {/* ── Summary pills ── */}
-        <div className="flex gap-3 flex-wrap">
+        {/* ── Filter Tabs ── */}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
           {[
-            { label: 'Total',  val: counts.total,  color: 'bg-slate-100 text-slate-700'       },
-            { label: 'Active', val: counts.active, color: 'bg-blue-100 text-blue-700'          },
-            { label: 'Won',    val: counts.won,    color: 'bg-emerald-100 text-emerald-700'    },
-            { label: 'Lost',   val: counts.lost,   color: 'bg-red-100 text-red-600'            },
-          ].map(p => (
-            <span key={p.label} className={cn('rounded-full px-3 py-1 text-xs font-semibold', p.color)}>
-              {p.label}: {p.val}
-            </span>
+            { key: 'active', label: 'Active', val: counts.active, activeClass: 'bg-white text-blue-700 shadow-sm',   inactiveClass: 'text-slate-500 hover:text-blue-600'  },
+            { key: 'won',    label: 'Won',    val: counts.won,    activeClass: 'bg-white text-emerald-700 shadow-sm', inactiveClass: 'text-slate-500 hover:text-emerald-600' },
+            { key: 'lost',   label: 'Lost',   val: counts.lost,   activeClass: 'bg-white text-red-600 shadow-sm',    inactiveClass: 'text-slate-500 hover:text-red-500'   },
+            { key: 'all',    label: 'Total',  val: counts.total,  activeClass: 'bg-white text-slate-800 shadow-sm',  inactiveClass: 'text-slate-500 hover:text-slate-700' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => { setActiveTab(tab.key); setFilterStatus('All Status') }}
+              className={cn(
+                'rounded-lg px-4 py-1.5 text-xs font-semibold transition-all',
+                activeTab === tab.key ? tab.activeClass : tab.inactiveClass
+              )}
+            >
+              {tab.label}
+              <span className={cn(
+                'ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                activeTab === tab.key
+                  ? tab.key === 'active' ? 'bg-blue-100 text-blue-700'
+                    : tab.key === 'won' ? 'bg-emerald-100 text-emerald-700'
+                    : tab.key === 'lost' ? 'bg-red-100 text-red-600'
+                    : 'bg-slate-200 text-slate-600'
+                  : 'bg-slate-200 text-slate-500'
+              )}>
+                {tab.val}
+              </span>
+            </button>
           ))}
         </div>
 
@@ -684,16 +833,51 @@ export function LeadsPage() {
           <table className="w-full text-sm min-w-[960px]">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {['Lead ID','Date','Customer','Next Follow-up','Within Days','Location / KM','Source','Building','Priority','Status',''].map(h => (
-                  <th key={h} className={cn(
-                    'px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap',
-                    h === 'Within Days' ? 'text-center' : 'text-left'
-                  )}>{h}</th>
-                ))}
+                {[
+                  { label: 'Lead ID', field: 'id' },
+                  { label: 'Date', field: 'date' },
+                  { label: 'Customer', field: 'name' },
+                  { label: 'Next Follow-up', field: 'nextDate' },
+                  { label: 'Within Days', field: 'withinDays' },
+                  { label: 'Location / KM', field: 'km' },
+                  { label: 'Source', field: null },
+                  { label: 'Building', field: null },
+                  { label: 'Priority', field: 'priority' },
+                  { label: 'Status', field: 'status' },
+                  { label: 'Attended By', field: null },
+                  { label: 'Comments', field: null },
+                  { label: '', field: null }
+                ].map(h => {
+                  if (!h.field) {
+                    return (
+                      <th key={h.label} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">
+                        {h.label}
+                      </th>
+                    )
+                  }
+                  const isCurrent = sortField === h.field
+                  return (
+                    <th
+                      key={h.label}
+                      onClick={() => handleSort(h.field)}
+                      className={cn(
+                        "px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:bg-slate-100 hover:text-slate-800 transition-colors select-none",
+                        h.field === 'withinDays' ? 'text-center' : 'text-left'
+                      )}
+                    >
+                      <div className={cn("flex items-center gap-1", h.field === 'withinDays' && "justify-center")}>
+                        <span>{h.label}</span>
+                        <span className="text-[10px] text-slate-400">
+                          {isCurrent ? (sortOrder === 'asc' ? '▲' : '▼') : '⇅'}
+                        </span>
+                      </div>
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.map(lead => (
+              {sortedLeads.map(lead => (
                 <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-slate-400">{lead.id}</td>
                   <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{lead.date}</td>
@@ -749,7 +933,33 @@ export function LeadsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button className="text-xs font-medium text-blue-600 hover:underline whitespace-nowrap">Edit</button>
+                    {lead.attendedBy ? (
+                      <span className="inline-block rounded-full bg-violet-100 text-violet-700 border border-violet-200 px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap">
+                        {lead.attendedBy}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 max-w-[200px]">
+                    {lead.remarks ? (
+                      <p className="text-[11px] text-slate-500 truncate" title={lead.remarks}>
+                        {lead.remarks}
+                      </p>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => {
+                        setSelectedLead(lead)
+                        setDrawerOpen(true)
+                      }}
+                      className="text-xs font-medium text-blue-600 hover:underline whitespace-nowrap"
+                    >
+                      Edit
+                    </button>
                   </td>
                 </tr>
               ))}
