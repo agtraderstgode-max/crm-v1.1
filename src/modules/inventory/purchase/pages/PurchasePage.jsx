@@ -66,8 +66,8 @@ function findBestMatch(item, productsList) {
 function InvoiceDetailModal({ invoice, onClose }) {
   if (!invoice) return null
 
-  const cgstAmount = invoice.gst_amount / 2
-  const sgstAmount = invoice.gst_amount / 2
+  const cgstAmount = (parseFloat(invoice.gst_amount) || 0) / 2
+  const sgstAmount = (parseFloat(invoice.gst_amount) || 0) / 2
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
@@ -151,7 +151,7 @@ function InvoiceDetailModal({ invoice, onClose }) {
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 text-xs space-y-2.5 font-bold text-slate-600">
               <div className="flex justify-between">
                 <span>Gross Subtotal:</span>
-                <span className="text-slate-800">₹{parseFloat(invoice.gross_amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span className="text-slate-800">₹{parseFloat(invoice.gross_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between font-medium text-slate-500 pl-4">
                 <span>CGST (9%):</span>
@@ -163,7 +163,7 @@ function InvoiceDetailModal({ invoice, onClose }) {
               </div>
               <div className="flex justify-between border-t border-slate-200 pt-2.5 text-sm text-slate-800 font-black">
                 <span>Grand Total Net Amount:</span>
-                <span className="text-blue-600">₹{parseFloat(invoice.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span className="text-blue-600">₹{parseFloat(invoice.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             </div>
           </div>
@@ -506,9 +506,9 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                 </div>
                 <div className="space-y-2">
                   <p className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">Bill Financials</p>
-                  <p><span className="font-bold text-slate-800">Gross Subtotal:</span> ₹{scanResult.gross_amount?.toLocaleString('en-IN')}</p>
-                  <p><span className="font-bold text-slate-800">GST amount ({scanResult.tax_percent}%):</span> ₹{scanResult.gst_amount?.toLocaleString('en-IN')}</p>
-                  <p><span className="font-bold text-slate-800">Net Payable:</span> ₹{scanResult.total_amount?.toLocaleString('en-IN')}</p>
+                  <p><span className="font-bold text-slate-800">Gross Subtotal:</span> ₹{parseFloat(scanResult.gross_amount || 0).toLocaleString('en-IN')}</p>
+                  <p><span className="font-bold text-slate-800">GST amount ({parseFloat(scanResult.tax_percent || 0)}%):</span> ₹{parseFloat(scanResult.gst_amount || 0).toLocaleString('en-IN')}</p>
+                  <p><span className="font-bold text-slate-800">Net Payable:</span> ₹{parseFloat(scanResult.total_amount || 0).toLocaleString('en-IN')}</p>
                 </div>
               </div>
 

@@ -434,6 +434,46 @@ app.post('/api/invoices', (req, res) => {
 // ─── Multer Middleware for File Upload ──────────────────────────────────────────
 const upload = multer({ storage: multer.memoryStorage() })
 
+// Clean string representation of numbers to float (handles commas, currency signs)
+function cleanNumber(val) {
+  if (val === undefined || val === null) return 0
+  if (typeof val === 'number') return val
+  const cleaned = String(val).replace(/[^\d.]/g, '')
+  return parseFloat(cleaned) || 0
+}
+
+// Clean and normalize arbitrary date strings to YYYY-MM-DD
+function cleanDate(val) {
+  if (!val) return ''
+  const str = String(val).trim()
+  
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str
+  }
+  
+  const dmyMatch = str.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/)
+  if (dmyMatch) {
+    return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`
+  }
+
+  const ymdMatch = str.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/)
+  if (ymdMatch) {
+    return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`
+  }
+
+  try {
+    const d = new Date(str)
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const dateVal = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${dateVal}`
+    }
+  } catch {}
+
+  return str
+}
+
 // ─── POST /api/upload-invoice ───────────────────────────────────────────────────
 app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
   try {
@@ -533,20 +573,43 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
       inv.supplier_name.toLowerCase() === invoiceData.supplier_name.toLowerCase()
     )
 
+    // Sanitize and clean numerical fields and dates defensively
+    const cleanedDate = cleanDate(invoiceData.date)
+    const gross_amount = cleanNumber(invoiceData.gross_amount)
+    const gst_amount = cleanNumber(invoiceData.gst_amount)
+    const total_amount = cleanNumber(invoiceData.total_amount)
+    const tax_percent = cleanNumber(invoiceData.tax_percent)
+    const total_qty = Math.round(cleanNumber(invoiceData.total_qty))
+
+    const cleanedItems = (invoiceData.items || []).map(item => {
+      const qty = Math.round(cleanNumber(item.quantity))
+      const rate = cleanNumber(item.rate)
+      return {
+        product_name: item.product_name || '',
+        size: item.size || '',
+        finish: item.finish || '',
+        brand: item.brand || '',
+        hsn_code: item.hsn_code || '',
+        quantity: qty,
+        rate: rate,
+        amount: cleanNumber(item.amount) || (qty * rate)
+      }
+    })
+
     res.json({
       invoice_no: invoiceData.invoice_no || '',
-      date: invoiceData.date || '',
+      date: cleanedDate,
       supplier_name: invoiceData.supplier_name || '',
       supplier_gstin: invoiceData.supplier_gstin || '',
       supplier_phone: invoiceData.supplier_phone || '',
       buyer_name: invoiceData.buyer_name || '',
       buyer_gstin: invoiceData.buyer_gstin || '',
-      total_qty: parseInt(invoiceData.total_qty) || 0,
-      gross_amount: parseFloat(invoiceData.gross_amount) || 0,
-      tax_percent: parseFloat(invoiceData.tax_percent) || 0,
-      gst_amount: parseFloat(invoiceData.gst_amount) || 0,
-      total_amount: parseFloat(invoiceData.total_amount) || 0,
-      items: invoiceData.items || [],
+      total_qty: total_qty,
+      gross_amount: gross_amount,
+      tax_percent: tax_percent,
+      gst_amount: gst_amount,
+      total_amount: total_amount,
+      items: cleanedItems,
       is_duplicate: isDuplicate
     })
 
