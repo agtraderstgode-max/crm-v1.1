@@ -502,7 +502,7 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
       10. tax_percent: Overall GST rate in % (e.g., 18 or 28, combined CGST + SGST).
       11. gst_amount: Grand total of GST taxes (CGST + SGST).
       12. total_amount: Net grand total amount after taxes (net payable).
-      13. total_items: Total number of distinct items / products listed in the invoice table (usually matches the maximum Sl. No. or the count of rows in the table).
+      13. total_items: The total number of products/items listed in the invoice. Scan the serial number column in the invoice table (often labeled 'No', 'Sl. No.', 'S.No.', 'SNo', 'SlNo', 'No. of Items', etc.) and extract the highest number (maximum/last serial number value) from this column (for example: if the rows are numbered 1 to 9, the total_items value is 9). If no serial number column exists, count the total rows in the item list table.
       14. items: Array of invoice line items, each containing:
           - product_name: Item model/design description.
           - size: Item size (e.g., 12X12, 18X12).
