@@ -1827,6 +1827,69 @@ function savePlanToCloud() {
   });
 }
 
+function savePlanToCloudSilent() {
+  if (!supabaseClient) return Promise.resolve(null);
+
+  const custName  = document.getElementById('customer-name').value.trim();
+  const custPhone = document.getElementById('customer-phone').value.trim();
+  const planDate  = document.getElementById('plan-date').value;
+  const planNotes = document.getElementById('plan-notes').value.trim();
+  
+  if (!custName) return Promise.resolve(null);
+
+  const quoteCustNameEl = document.getElementById('quote-customer-name');
+  const quoteNumberEl   = document.getElementById('quote-number');
+  const quoteDateEl     = document.getElementById('quote-date');
+  const quoteByEl       = document.getElementById('quote-by');
+  
+  const quoteCustName = quoteCustNameEl ? quoteCustNameEl.value.trim() : '';
+  const quoteNumber   = quoteNumberEl ? quoteNumberEl.value.trim() : '';
+  const quoteDate     = quoteDateEl ? quoteDateEl.value.trim() : '';
+  const quoteBy       = quoteByEl ? quoteByEl.value.trim() : '';
+
+  let planNotesToSave = planNotes;
+  if (quoteBy) {
+    planNotesToSave += `\n[quote_by:${quoteBy}]`;
+  }
+  
+  const payload = {
+    customer_name: custName,
+    customer_phone: custPhone,
+    plan_date: planDate || null,
+    plan_notes: planNotesToSave,
+    rooms: rooms,
+    quotation_items: quotationItems,
+    quote_customer_name: quoteCustName,
+    quote_number: quoteNumber,
+    quote_date: quoteDate,
+    next_id: nextId
+  };
+
+  let query;
+  if (activeEstimateId) {
+    query = supabaseClient
+      .from('estimates')
+      .update(payload)
+      .eq('id', activeEstimateId)
+      .select();
+  } else {
+    query = supabaseClient
+      .from('estimates')
+      .insert([payload])
+      .select();
+  }
+
+  return query.then(({ data, error }) => {
+    if (!error && data && data.length > 0) {
+      activeEstimateId = data[0].id;
+      updateActiveEstimateStatus();
+      console.log("Estimate autosaved to cloud silently.");
+    }
+  }).catch(err => {
+    console.error("Silent Cloud Save error:", err);
+  });
+}
+
 function openCloudEstimatesModal() {
   if (!supabaseClient) {
     alert("Supabase is not connected. Please click the Settings (⚙️) button to configure your URL and Anon Key.");
@@ -2290,14 +2353,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const syncStatus = document.getElementById('crm-sync-status');
   
   if (leadSelect) {
-    fetch('/api/leads')
-      .then(res => res.json())
-      .then(leads => {
-        leadSelect.innerHTML = '<option value="" style="background: #0f172a; color: #fff;">-- Choose CRM Lead --</option>';
+    Promise.all([
+      fetch('/api/leads').then(res => res.json()).catch(() => []),
+      fetch('/api/customers').then(res => res.json()).catch(() => [])
+    ])
+    .then(([leads, customers]) => {
+      leadSelect.innerHTML = '<option value="" style="background: #0f172a; color: #fff;">-- Choose CRM Lead / Customer --</option>';
+      
+      if (leads.length > 0) {
+        const leadsGroup = document.createElement('optgroup');
+        leadsGroup.label = 'Enquiry - Leads';
+        leadsGroup.style.background = '#0f172a';
+        leadsGroup.style.color = '#94a3b8';
         
         leads.forEach(lead => {
           const opt = document.createElement('option');
-          opt.value = lead.id;
+          opt.value = `LEAD:${lead.id}`;
           opt.style.background = '#0f172a';
           opt.style.color = '#fff';
           opt.textContent = `${lead.name} (${lead.phone}) - ${lead.location || 'No Location'}`;
@@ -2305,18 +2376,41 @@ document.addEventListener('DOMContentLoaded', () => {
           opt.dataset.phone = lead.phone;
           opt.dataset.location = lead.location || '';
           opt.dataset.notes = lead.remarks || lead.location || '';
-          leadSelect.appendChild(opt);
+          leadsGroup.appendChild(opt);
         });
+        leadSelect.appendChild(leadsGroup);
+      }
+      
+      if (customers.length > 0) {
+        const custGroup = document.createElement('optgroup');
+        custGroup.label = 'Customers Master';
+        custGroup.style.background = '#0f172a';
+        custGroup.style.color = '#94a3b8';
         
-        if (syncStatus) syncStatus.textContent = '● Synced';
-      })
-      .catch(err => {
-        console.error("Error loading leads in planner:", err);
-        if (syncStatus) {
-          syncStatus.textContent = '● Sync Offline';
-          syncStatus.style.color = '#f87171';
-        }
-      });
+        customers.forEach(cust => {
+          const opt = document.createElement('option');
+          opt.value = `CUST:${cust.id}`;
+          opt.style.background = '#0f172a';
+          opt.style.color = '#fff';
+          opt.textContent = `${cust.name} (${cust.phone}) - ${cust.location || 'No Location'}`;
+          opt.dataset.name = cust.name;
+          opt.dataset.phone = cust.phone;
+          opt.dataset.location = cust.location || '';
+          opt.dataset.notes = cust.remarks || cust.location || '';
+          custGroup.appendChild(opt);
+        });
+        leadSelect.appendChild(custGroup);
+      }
+      
+      if (syncStatus) syncStatus.textContent = '● Synced';
+    })
+    .catch(err => {
+      console.error("Error loading leads & customers in planner:", err);
+      if (syncStatus) {
+        syncStatus.textContent = '● Sync Offline';
+        syncStatus.style.color = '#f87171';
+      }
+    });
 
     leadSelect.addEventListener('change', (e) => {
       const selectedOption = leadSelect.options[leadSelect.selectedIndex];
@@ -2363,6 +2457,9 @@ function confirmOrder() {
     return;
   }
   
+  // Auto-save quotation data to Supabase silently
+  savePlanToCloudSilent();
+  
   const customerName = document.getElementById('quote-customer-name').value || 'Customer';
   const grandTotal = quotationItems.reduce((sum, item) => sum + item.amount, 0);
   const totalItems = quotationItems.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
@@ -2396,35 +2493,103 @@ function confirmOrder() {
   })
   .then(res => res.json())
   .then(savedOrder => {
-    // 2. If a lead is selected in CRM dropdown, mark it as Won ('Customer Bought')
+    // 2. If a lead/customer is selected in CRM dropdown
     const leadSelect = document.getElementById('crm-lead-select');
     if (leadSelect && leadSelect.value) {
-      const leadId = leadSelect.value;
-      // Fetch lead details first
-      fetch(`/api/leads`)
-        .then(r => r.json())
-        .then(leads => {
-          const lead = leads.find(l => l.id === leadId);
-          if (lead) {
-            lead.status = 'Customer Bought';
-            lead.expectedAmt = orderData.total;
-            // Update lead
-            return fetch(`/api/leads/${leadId}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(lead)
-            });
-          }
-        })
-        .then(() => {
-          alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}\nLead status updated to "Customer Bought".`);
-        })
-        .catch(err => {
-          console.error("Error updating lead status:", err);
-          alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}`);
-        });
+      const parts = leadSelect.value.split(':');
+      const type = parts[0];
+      const selectedId = parts[1];
+
+      if (type === 'LEAD') {
+        // Fetch lead details first
+        fetch(`/api/leads`)
+          .then(r => r.json())
+          .then(leads => {
+            const lead = leads.find(l => l.id === selectedId);
+            if (lead) {
+              const customerData = {
+                name: lead.name,
+                phone: lead.phone,
+                custType: lead.custType || 'Owner',
+                location: lead.location || '',
+                lat: lead.lat || '',
+                lng: lead.lng || '',
+                km: lead.km || '',
+                source: lead.source || '',
+                size: lead.size || '',
+                houseType: lead.houseType || '',
+                stage: lead.stage || '',
+                budget: lead.budget || '',
+                expectedAmt: orderData.total,
+                remarks: lead.remarks || '',
+                attendedBy: lead.attendedBy || '',
+                date: new Date().toISOString().split('T')[0]
+              };
+              return fetch('/api/customers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(customerData)
+              });
+            }
+          })
+          .then(() => {
+            alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}\nAdded to Customers Master.`);
+          })
+          .catch(err => {
+            console.error("Error adding customer:", err);
+            alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}`);
+          });
+      } else if (type === 'CUST') {
+        // Customer already exists, update their total value
+        fetch(`/api/customers`)
+          .then(r => r.json())
+          .then(customers => {
+            const customer = customers.find(c => c.id === selectedId);
+            if (customer) {
+              customer.expectedAmt = orderData.total;
+              return fetch(`/api/customers/${selectedId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(customer)
+              });
+            }
+          })
+          .then(() => {
+            alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}\nAdded to Customers Master.`);
+          })
+          .catch(err => {
+            console.error("Error updating customer value:", err);
+            alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}`);
+          });
+      }
     } else {
-      alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}`);
+      // Manual Customer — also auto-add to Customers Master list!
+      const customerData = {
+        name: customerName,
+        phone: customerPhone,
+        custType: 'Owner', // default
+        location: customerLoc,
+        lat: '', lng: '', km: '',
+        source: 'Walk In', // default
+        size: '', houseType: '', stage: '', budget: '',
+        expectedAmt: orderData.total,
+        remarks: 'Order confirmed from Quotation',
+        attendedBy: '',
+        date: new Date().toISOString().split('T')[0]
+      };
+      
+      fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customerData)
+      })
+      .then(() => {
+        alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}\nAdded to Customers Master.`);
+      })
+      .catch(err => {
+        console.error("Error adding customer manually:", err);
+        alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}`);
+      });
     }
   })
   .catch(err => {

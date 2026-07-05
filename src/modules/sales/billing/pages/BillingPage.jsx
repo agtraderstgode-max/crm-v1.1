@@ -1,4 +1,5 @@
 import { Receipt, Plus } from 'lucide-react'
+import { fmtDate } from '@/lib/utils'
 const INVOICES = [
   { id:'INV-001', customer:'Suresh Constructions', date:'2026-07-02', total:'₹4,80,000', paid:'₹2,40,000', balance:'₹2,40,000', status:'Partial' },
   { id:'INV-002', customer:'Karthik Builders',    date:'2026-07-01', total:'₹2,10,000', paid:'₹2,10,000', balance:'₹0',       status:'Paid'    },
@@ -23,7 +24,7 @@ export function BillingPage() {
               <tr key={inv.id} className="hover:bg-slate-50">
                 <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{inv.id}</td>
                 <td className="px-5 py-3.5 font-medium text-slate-800">{inv.customer}</td>
-                <td className="px-5 py-3.5 text-xs text-slate-500">{inv.date}</td>
+                <td className="px-5 py-3.5 text-xs text-slate-500">{fmtDate(inv.date)}</td>
                 <td className="px-5 py-3.5 font-semibold text-slate-800">{inv.total}</td>
                 <td className="px-5 py-3.5 text-emerald-700 font-medium">{inv.paid}</td>
                 <td className="px-5 py-3.5 text-red-600 font-medium">{inv.balance}</td>

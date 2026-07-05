@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Search, Plus, MapPin, Phone, X, Save, Navigation } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, fmtDate } from '@/lib/utils'
 
 // ─── Constants ───────────────────────────────────────────────
 const SOURCES = ['Tv Ad','Flex Display','Social Media','Google','Referral','Engineer','Marketing Person','Mestri','Walk In','Company Lead']
@@ -880,7 +880,7 @@ export function LeadsPage() {
               {sortedLeads.map(lead => (
                 <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-slate-400">{lead.id}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{lead.date}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDate(lead.date)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-700 flex-shrink-0">
@@ -897,16 +897,47 @@ export function LeadsPage() {
                   
                   {/* Next Follow-up Date */}
                   <td className="px-4 py-3 text-xs text-slate-600 font-semibold whitespace-nowrap">
-                    {lead.nextDate || <span className="text-slate-300">—</span>}
+                    {lead.nextDate ? fmtDate(lead.nextDate) : <span className="text-slate-300">—</span>}
                   </td>
 
-                  {/* Within Days */}
+                  {/* Within Days — live calculated from today */}
                   <td className="px-4 py-3 text-xs text-center whitespace-nowrap">
-                    {lead.withinDays ? (
-                      <span className="inline-block rounded bg-blue-50 border border-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">
-                        {lead.withinDays} days
-                      </span>
-                    ) : (
+                    {lead.nextDate ? (() => {
+                      const [y, m, d] = lead.nextDate.split('-').map(Number)
+                      const next = new Date(y, m - 1, d)
+                      const today = new Date()
+                      today.setHours(0, 0, 0, 0)
+                      const diff = Math.round((next - today) / (1000 * 60 * 60 * 24))
+
+                      if (diff < 0) {
+                        // Overdue — red
+                        return (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-red-100 border border-red-300 px-2.5 py-0.5 text-xs font-bold text-red-700">
+                            🔴 {diff} days
+                          </span>
+                        )
+                      } else if (diff === 0) {
+                        // Due today — amber
+                        return (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-xs font-bold text-amber-700">
+                            🟡 Today
+                          </span>
+                        )
+                      } else if (diff === 1) {
+                        return (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-50 border border-orange-200 px-2.5 py-0.5 text-xs font-bold text-orange-600">
+                            +{diff} day
+                          </span>
+                        )
+                      } else {
+                        // Upcoming — blue
+                        return (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 border border-blue-100 px-2.5 py-0.5 text-xs font-bold text-blue-700">
+                            +{diff} days
+                          </span>
+                        )
+                      }
+                    })() : (
                       <span className="text-slate-300">—</span>
                     )}
                   </td>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Search, ShoppingBag, Phone, MapPin, User, FileText, Printer, ChevronRight, Plus, Minus, Trash2, X, CheckCircle } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, fmtDate } from '@/lib/utils'
 
 // ─── Quotation item row ────────────────────────────────────────
 function QuotationRow({ item, idx, onChange, onRemove }) {

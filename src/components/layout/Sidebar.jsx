@@ -29,9 +29,8 @@ const NAV_GROUPS = [
     label: 'CRM',
     items: [
       { label: 'Enquiry - Lead', icon: TrendingUp,    to: '/leads' },
-      { label: 'Customers',      icon: Users,          to: '/customers' },
       { label: 'Follow-ups',     icon: CalendarCheck,  to: '/followups' },
-      { label: 'Buying Now',     icon: ShoppingBag,    to: '/buying-now' },
+      { label: 'Customers',      icon: Users,          to: '/customers' },
     ],
   },
   {

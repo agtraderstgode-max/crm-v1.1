@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { CalendarCheck, Phone, Clock, AlertCircle, MessageSquare, Send, CheckCircle, X, ChevronRight, User } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, fmtDate } from '@/lib/utils'
 
 export function FollowupsPage() {
   const [leads, setLeads] = useState([])
@@ -86,12 +86,10 @@ export function FollowupsPage() {
     const todayDate = new Date()
 
     if (outcome === 'No Answer') {
-      // Auto-snooze by 1 day
-      const next = new Date(todayDate)
-      next.setDate(todayDate.getDate() + 1)
-      finalNextDate = next.toISOString().split('T')[0]
-      finalWithinDays = '1'
-      finalStatus = 'Keep Tracking 2x' // keep in loop
+      // No Answer = treated as Lost Customer (customer unreachable)
+      finalStatus = 'Lost Customer'
+      finalNextDate = ''
+      finalWithinDays = ''
     } 
     else if (outcome === 'Keep Tracking') {
       let days = 3
@@ -271,7 +269,7 @@ export function FollowupsPage() {
                     { label: 'Keep Tracking', value: 'Keep Tracking', color: 'border-slate-200 text-slate-700 hover:border-amber-300 hover:text-amber-600', active: 'bg-amber-500 border-amber-500 text-white shadow-sm' },
                     { label: 'Customer Bought', value: 'Customer Bought', color: 'border-slate-200 text-slate-700 hover:border-emerald-300 hover:text-emerald-600', active: 'bg-emerald-600 border-emerald-600 text-white shadow-sm' },
                     { label: 'Lost Customer', value: 'Lost Customer', color: 'border-slate-200 text-slate-700 hover:border-red-300 hover:text-red-600', active: 'bg-red-500 border-red-500 text-white shadow-sm' },
-                    { label: 'No Answer', value: 'No Answer', color: 'border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-600', active: 'bg-blue-600 border-blue-600 text-white shadow-sm' }
+                    { label: 'No Answer', value: 'No Answer', color: 'border-slate-200 text-slate-700 hover:border-red-300 hover:text-red-500', active: 'bg-red-400 border-red-400 text-white shadow-sm' }
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -461,7 +459,7 @@ function LeadCard({ lead, onAction, daysSince }) {
         {/* Info row */}
         <div className="flex items-center gap-3 text-xs text-slate-500 pl-1.5 flex-wrap">
           <span className="flex items-center gap-1 font-semibold text-blue-600 bg-blue-50 border border-blue-100 rounded px-2 py-0.5">
-            <Clock className="h-3.5 w-3.5" /> Next: {lead.nextDate}
+            <Clock className="h-3.5 w-3.5" /> Next: {fmtDate(lead.nextDate)}
           </span>
           <span className="bg-slate-100 rounded px-2 py-0.5 font-medium">
             ⏳ {daysSince} days since entry

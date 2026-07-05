@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { ShoppingCart, Calendar, Truck, User, Phone, MapPin, X, CheckCircle, Package } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, fmtDate, fmtTimestamp } from '@/lib/utils'
 
 const STATUS_STYLE = {
   Confirmed:  'bg-blue-100 text-blue-700 border border-blue-200',
@@ -10,29 +10,7 @@ const STATUS_STYLE = {
   Cancelled:  'bg-red-100 text-red-600 border border-red-200'
 }
 
-function formatDeliveryDate(dateStr) {
-  if (!dateStr) return '—'
-  try {
-    const todayStr = new Date().toISOString().split('T')[0]
-    const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0]
 
-    if (dateStr === todayStr) return 'Today'
-    if (dateStr === tomorrowStr) return 'Tomorrow'
-
-    const dateObj = new Date(dateStr)
-    if (isNaN(dateObj.getTime())) return dateStr
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-    const dayName = days[dateObj.getDay()]
-    const parts = dateStr.split('-')
-    let formattedDate = dateStr
-    if (parts.length === 3) {
-      formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}` // Format as DD-MM-YYYY
-    }
-    return `${formattedDate} (${dayName})`
-  } catch (e) {
-    return dateStr
-  }
-}
 
 export function OrdersPage() {
   const [orders, setOrders] = useState([])
@@ -46,16 +24,27 @@ export function OrdersPage() {
   const [vehicleInfo, setVehicleInfo] = useState('')
   const [handleBy, setHandleBy] = useState('Staff 1')
 
-  // Payment States
-  const [paidAmount, setPaidAmount] = useState('')
-  const [paidMode, setPaidMode] = useState('')
+  // Payment States — split payments
+  const [splitPayments, setSplitPayments] = useState([{ amount: '', mode: '' }])
   const [balanceMode, setBalanceMode] = useState('')
+  const [paymentNotes, setPaymentNotes] = useState('')
 
   const parseAmount = (amtStr) => {
     if (!amtStr) return 0
-    const clean = amtStr.replace(/[^\d]/g, '')
+    const clean = String(amtStr).replace(/[^\d]/g, '')
     return parseInt(clean) || 0
   }
+
+  const addSplitRow = () => setSplitPayments(prev => [...prev, { amount: '', mode: '' }])
+
+  const removeSplitRow = (idx) => setSplitPayments(prev => prev.filter((_, i) => i !== idx))
+
+  const updateSplitRow = (idx, field, value) => {
+    setSplitPayments(prev => prev.map((row, i) => i === idx ? { ...row, [field]: value } : row))
+  }
+
+  const totalSplitPaid = () =>
+    splitPayments.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0)
 
   const fetchOrders = () => {
     setLoading(true)
@@ -85,27 +74,33 @@ export function OrdersPage() {
     setHandleBy(order.handleBy || 'Staff 1')
 
     // Payment init
-    setPaidAmount(order.paidAmount !== undefined ? order.paidAmount : '')
-    setPaidMode(order.paidMode || '')
+    setSplitPayments(order.splitPayments && order.splitPayments.length > 0
+      ? order.splitPayments
+      : [{ amount: '', mode: '' }]
+    )
     setBalanceMode(order.balanceMode || '')
+    setPaymentNotes(order.paymentNotes || '')
   }
 
   const handleConfirmOrder = () => {
     if (!selectedOrder) return
 
     const totalVal = parseAmount(selectedOrder.total)
-    const paidAmtVal = parseFloat(paidAmount) || 0
-    const balanceAmtVal = totalVal - paidAmtVal
+    const paidTotal = totalSplitPaid()
+    const balanceAmt = totalVal - paidTotal
 
-    // Validation
-    if (paidAmtVal > 0 && !paidMode) {
-      alert("Mandatory: Please select payment mode for the paid amount!")
-      return
+    // Validate: each split row that has amount must have mode
+    for (let i = 0; i < splitPayments.length; i++) {
+      const row = splitPayments[i]
+      const amt = parseFloat(row.amount) || 0
+      if (amt > 0 && !row.mode) {
+        alert(`Row ${i + 1}: Please select a payment mode for the entered amount.`)
+        return
+      }
     }
-    if (balanceAmtVal > 0 && !balanceMode) {
-      alert("Mandatory: Please select payment mode for the remaining balance!")
-      return
-    }
+
+    // Balance mode is optional now, no validation alert required.
+
 
     let finalDeliveryDate = ''
     const todayStr = new Date().toISOString().split('T')[0]
@@ -117,18 +112,17 @@ export function OrdersPage() {
       finalDeliveryDate = deliveryDate || todayStr
     }
 
-    // Payment record for collections feed
-    const newPayments = []
-    if (paidAmtVal > 0) {
-      newPayments.push({
-        id: `PAY-${Date.now().toString().slice(-6)}`,
-        date: todayStr,
-        amount: paidAmtVal,
-        mode: paidMode,
+    // Build payment records from split rows
+    const newPayments = splitPayments
+      .filter(r => parseFloat(r.amount) > 0 && r.mode)
+      .map((r, i) => ({
+        id: `PAY-${Date.now().toString().slice(-5)}${i}`,
+        date: new Date().toISOString(),
+        amount: parseFloat(r.amount),
+        mode: r.mode,
         ref: 'Order Confirmation',
-        notes: 'Recorded during order dispatch planning'
-      })
-    }
+        notes: paymentNotes || ''
+      }))
 
     const updatedOrder = {
       ...selectedOrder,
@@ -138,10 +132,12 @@ export function OrdersPage() {
       transport,
       vehicleInfo,
       handleBy,
-      paidAmount: paidAmtVal,
-      paidMode,
+      splitPayments,
+      paidAmount: paidTotal,
       balanceMode,
-      payments: [...(selectedOrder.payments || []), ...newPayments]
+      paymentNotes,
+      payments: [...(selectedOrder.payments || []), ...newPayments],
+      confirmedAt: selectedOrder.confirmedAt || new Date().toISOString()
     }
 
     fetch(`/api/orders/${selectedOrder.id}`, {
@@ -154,7 +150,35 @@ export function OrdersPage() {
         setOrders(prev => prev.map(o => o.id === selectedOrder.id ? data : o))
         setSelectedOrder(null)
       })
-      .catch(err => console.error("Error updating order:", err))
+      .catch(err => console.error('Error updating order:', err))
+  }
+
+  const handleMarkDispatched = (order) => {
+    const ok = window.confirm(`Confirm Dispatch\n\nMark order ${order.id} for "${order.customer}" as DISPATCHED now?\n\nClick OK to confirm.`)
+    if (!ok) return
+    const updated = { ...order, status: 'Dispatched', dispatchedAt: new Date().toISOString() }
+    fetch(`/api/orders/${order.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated)
+    })
+      .then(res => res.json())
+      .then(data => setOrders(prev => prev.map(o => o.id === order.id ? data : o)))
+      .catch(err => console.error('Error dispatching order:', err))
+  }
+
+  const handleMarkDelivered = (order) => {
+    const ok = window.confirm(`Confirm Delivery\n\nMark order ${order.id} for "${order.customer}" as DELIVERED now?\n\nClick OK to confirm.`)
+    if (!ok) return
+    const updated = { ...order, status: 'Delivered', deliveredAt: new Date().toISOString() }
+    fetch(`/api/orders/${order.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated)
+    })
+      .then(res => res.json())
+      .then(data => setOrders(prev => prev.map(o => o.id === order.id ? data : o)))
+      .catch(err => console.error('Error delivering order:', err))
   }
 
   return (
@@ -175,8 +199,8 @@ export function OrdersPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                 {['Order #','Customer','Date','Items','Expected Delivery','Status','Action'].map(h=>(
-                  <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                 {['Order #','Customer','Date','Items','Expected Delivery','Confirmed','Dispatched','Delivered','Status','Action'].map(h=>(
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -188,23 +212,83 @@ export function OrdersPage() {
                     <p className="font-semibold text-slate-800">{o.customer}</p>
                     {o.phone && <p className="text-[11px] text-slate-400 flex items-center gap-0.5 mt-0.5"><Phone className="h-2.5 w-2.5" />{o.phone}</p>}
                   </td>
-                  <td className="px-5 py-3.5 text-xs text-slate-500">{o.date}</td>
+                  <td className="px-5 py-3.5 text-xs text-slate-500">{fmtDate(o.date)}</td>
                   <td className="px-5 py-3.5 text-slate-600">{o.items} items</td>
-                  <td className="px-5 py-3.5 text-xs font-semibold text-slate-700 whitespace-nowrap">
+                  <td className="px-4 py-3.5 text-xs font-semibold text-slate-700 whitespace-nowrap">
                     {o.status === 'Processing' ? (
                       <span className="text-slate-400 font-normal italic">Not planned yet</span>
                     ) : o.delivery ? (
-                      formatDeliveryDate(o.delivery)
+                      fmtDate(o.delivery)
                     ) : (
                       '—'
                     )}
                   </td>
-                  <td className="px-5 py-3.5">
+
+                  {/* Confirmed At */}
+                  <td className="px-4 py-3.5 whitespace-nowrap">
+                    {(() => {
+                      const ts = fmtTimestamp(o.confirmedAt)
+                      return ts ? (
+                        <div>
+                          <p className="text-[11px] font-semibold text-blue-700">{ts.date}</p>
+                          <p className="text-[10px] text-blue-400">{ts.time}</p>
+                        </div>
+                      ) : <span className="text-slate-300 text-xs">—</span>
+                    })()}
+                  </td>
+
+                  {/* Dispatched At */}
+                  <td className="px-4 py-3.5 whitespace-nowrap">
+                    {(() => {
+                      const ts = fmtTimestamp(o.dispatchedAt)
+                      if (ts) return (
+                        <div>
+                          <p className="text-[11px] font-semibold text-violet-700">{ts.date}</p>
+                          <p className="text-[10px] text-violet-400">{ts.time}</p>
+                        </div>
+                      )
+                      // Only show Waiting if order is Confirmed (ready to dispatch)
+                      if (o.status === 'Confirmed') return (
+                        <button
+                          onClick={() => handleMarkDispatched(o)}
+                          className="text-[11px] font-semibold text-violet-400 border border-violet-200 bg-violet-50 hover:bg-violet-100 hover:text-violet-700 rounded-full px-2.5 py-0.5 transition-all cursor-pointer animate-pulse"
+                        >
+                          ⏳ Waiting
+                        </button>
+                      )
+                      return <span className="text-slate-200 text-xs">—</span>
+                    })()}
+                  </td>
+
+                  {/* Delivered At */}
+                  <td className="px-4 py-3.5 whitespace-nowrap">
+                    {(() => {
+                      const ts = fmtTimestamp(o.deliveredAt)
+                      if (ts) return (
+                        <div>
+                          <p className="text-[11px] font-semibold text-emerald-700">{ts.date}</p>
+                          <p className="text-[10px] text-emerald-400">{ts.time}</p>
+                        </div>
+                      )
+                      // Only show Waiting if order has been dispatched
+                      if (o.status === 'Dispatched') return (
+                        <button
+                          onClick={() => handleMarkDelivered(o)}
+                          className="text-[11px] font-semibold text-emerald-400 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-700 rounded-full px-2.5 py-0.5 transition-all cursor-pointer animate-pulse"
+                        >
+                          ⏳ Waiting
+                        </button>
+                      )
+                      return <span className="text-slate-200 text-xs">—</span>
+                    })()}
+                  </td>
+
+                  <td className="px-4 py-3.5">
                     <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', STATUS_STYLE[o.status] || 'bg-slate-100 text-slate-600')}>
                       {o.status}
                     </span>
                   </td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-4 py-3.5">
                     <button
                       onClick={() => handleOpenDrawer(o)}
                       className={cn(
@@ -268,7 +352,7 @@ export function OrdersPage() {
 
                 <div className="border-t border-slate-200/60 pt-2 flex justify-between text-xs text-slate-600">
                   <span>Enquiry/Quotation ID: <strong className="font-mono">{selectedOrder.id}</strong></span>
-                  <span>Date: <strong>{selectedOrder.date}</strong></span>
+                  <span>Date: <strong>{fmtDate(selectedOrder.date)}</strong></span>
                 </div>
               </div>
 
@@ -302,92 +386,143 @@ export function OrdersPage() {
                 </div>
               )}
 
-              {/* Payment Planning Section */}
+              {/* Payment Planning Section — Split Payments */}
               <div className="space-y-4 border-t border-slate-100 pt-4">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Payment Planning</h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Payment Planning</h4>
+                  <span className="text-xs font-bold text-slate-600">Order Total: {selectedOrder.total}</span>
                 </div>
 
-                {/* Paid Amount Input */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-xs font-semibold text-slate-500">Advance Paid Amount (₹)</label>
-                    <span className="text-xs font-bold text-slate-600">Order Total: {selectedOrder.total}</span>
-                  </div>
-                  <input
-                    type="number"
-                    placeholder="e.g. 4000"
-                    value={paidAmount}
-                    onChange={e => setPaidAmount(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 transition-all placeholder:text-slate-300"
-                  />
-                </div>
+                {/* Split rows */}
+                <div className="space-y-2">
+                  {splitPayments.map((row, idx) => (
+                    <div key={idx} className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider w-16">Payment {idx + 1}</span>
+                        {splitPayments.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeSplitRow(idx)}
+                            className="ml-auto text-[10px] text-red-400 hover:text-red-600 font-semibold transition-colors"
+                          >
+                            ✕ Remove
+                          </button>
+                        )}
+                      </div>
 
-                {/* Paid Mode (Only mandatory if paidAmount > 0) */}
-                {(parseFloat(paidAmount) || 0) > 0 && (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1.5">
-                      Paid Via Mode <span className="text-red-500">*</span>
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['Cash', 'UPI', 'Account Transfer', 'Cheque', 'EMI', 'Credit'].map(mode => (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => setPaidMode(mode)}
-                          className={cn(
-                            'rounded-lg border py-2 text-xs font-semibold transition-all',
-                            paidMode === mode
-                              ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm font-bold'
-                              : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300'
-                          )}
-                        >
-                          {mode}
-                        </button>
-                      ))}
+                      {/* Amount */}
+                      <input
+                        type="number"
+                        placeholder="Amount (₹)"
+                        value={row.amount}
+                        onChange={e => updateSplitRow(idx, 'amount', e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400 transition-all placeholder:text-slate-300"
+                      />
+
+                      {/* Mode buttons */}
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {['Cash', 'UPI', 'Account Transfer', 'Cheque', 'EMI'].map(mode => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => updateSplitRow(idx, 'mode', mode)}
+                            className={cn(
+                              'rounded-lg border py-1.5 text-[11px] font-semibold transition-all',
+                              row.mode === mode
+                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300'
+                            )}
+                          >
+                            {mode}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  ))}
+                </div>
 
-                {/* Remaining Balance display & mode selection */}
+                {/* Add split row button */}
+                <button
+                  type="button"
+                  onClick={addSplitRow}
+                  className="w-full rounded-lg border border-dashed border-blue-300 py-2 text-xs font-semibold text-blue-500 hover:bg-blue-50 hover:border-blue-400 transition-all"
+                >
+                  + Add Another Payment Method
+                </button>
+
+                {/* Live summary */}
                 {(() => {
                   const total = parseAmount(selectedOrder.total)
-                  const paid = parseFloat(paidAmount) || 0
+                  const paid = totalSplitPaid()
                   const balance = total - paid
-                  if (balance <= 0) return null
-
                   return (
-                    <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-4.5">
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-slate-500 font-medium">Remaining Balance:</span>
-                        <span className="font-extrabold text-red-600 text-base">₹{balance.toLocaleString('en-IN')}</span>
+                    <div className="rounded-xl overflow-hidden border border-slate-200 text-xs">
+                      <div className="flex justify-between items-center px-4 py-2.5 bg-emerald-50 border-b border-emerald-200">
+                        <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
+                          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+                          Total Paid
+                        </span>
+                        <span className="font-extrabold text-emerald-700 text-sm">₹{paid.toLocaleString('en-IN')}</span>
                       </div>
-                      
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">
-                          Select Balance Handling Mode <span className="text-red-500">*</span>
-                        </label>
-                        <div className="grid grid-cols-3 gap-2">
-                          {['Cash', 'UPI', 'Account Transfer', 'Cheque', 'EMI', 'Credit'].map(mode => (
-                            <button
-                              key={mode}
-                              type="button"
-                              onClick={() => setBalanceMode(mode)}
-                              className={cn(
-                                'rounded-lg border py-2 text-xs font-semibold transition-all',
-                                balanceMode === mode
-                                  ? 'bg-amber-600 border-amber-600 text-white shadow-sm font-bold'
-                                  : 'border-slate-200 bg-white text-slate-600 hover:border-amber-300'
-                              )}
-                            >
-                              {mode}
-                            </button>
-                          ))}
-                        </div>
+                      <div className={cn(
+                        'flex justify-between items-center px-4 py-3',
+                        balance > 0 ? 'bg-red-50 border-l-4 border-red-500' : 'bg-emerald-50'
+                      )}>
+                        <span className={cn('font-bold text-sm', balance > 0 ? 'text-red-700' : 'text-emerald-700')}>
+                          {balance > 0 ? '⚠ Remaining Balance' : '✓ Fully Paid'}
+                        </span>
+                        <span className={cn('font-black text-lg', balance > 0 ? 'text-red-600' : 'text-emerald-600')}>
+                          ₹{balance.toLocaleString('en-IN')}
+                        </span>
                       </div>
                     </div>
                   )
                 })()}
+
+                {/* Balance handling mode — only if balance exists */}
+                {(() => {
+                  const total = parseAmount(selectedOrder.total)
+                  const balance = total - totalSplitPaid()
+                  if (balance <= 0) return null
+                  return (
+                    <div className="rounded-xl border-2 border-red-200 bg-red-50/60 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-bold text-red-700">
+                          Balance ₹{balance.toLocaleString('en-IN')} — How will it be paid? <span className="text-red-500">*</span>
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['Cash', 'UPI', 'Account Transfer', 'Cheque', 'EMI', 'Credit'].map(mode => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setBalanceMode(mode)}
+                            className={cn(
+                              'rounded-lg border py-2 text-xs font-semibold transition-all',
+                              balanceMode === mode
+                                ? 'bg-red-600 border-red-600 text-white shadow-sm font-bold'
+                                : 'border-red-200 bg-white text-red-700 hover:border-red-400 hover:bg-red-50'
+                            )}
+                          >
+                            {mode}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Payment Notes */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Payment Remarks / Reference</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. GPay Ref, Cheque No, notes..."
+                    value={paymentNotes}
+                    onChange={e => setPaymentNotes(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 transition-all placeholder:text-slate-300"
+                  />
+                </div>
               </div>
 
               {/* Dispatch form fields — only editable if in Processing or updating */}

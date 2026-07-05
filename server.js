@@ -19,6 +19,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = path.join(__dirname, 'data')
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json')
 const ORDERS_FILE = path.join(DATA_DIR, 'orders.json')
+const CUSTOMERS_FILE = path.join(DATA_DIR, 'customers.json')
 
 // ─── Supabase Client ─────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://emiwizejpibhvdoylbmb.supabase.co'
@@ -47,11 +48,20 @@ const INITIAL_ORDERS = [
   { id:'ORD-004', customer:'Ibrahim Tiles',        date:'2026-06-28', items:8,  total:'₹68,000',   status:'Confirmed',  delivery:'2026-07-10' },
 ]
 
+const INITIAL_CUSTOMERS = [
+  { id: 'C-001', name: 'Aravind Kumar',       phone: '9876543210', location: 'Gandhipuram',    custType: 'Owner',       expectedAmt: '₹80,000',   attendedBy: 'Ramesh', remarks: 'Wants premium wood finish tiles.', source: 'Google', size: '1500+', houseType: 'New', stage: 'Immediate', budget: 'Medium', date: '2026-07-03' },
+  { id: 'C-002', name: 'Suresh Constructions',phone: '9845612307', location: 'Peelamedu',       custType: 'Builder',     expectedAmt: '₹3,20,000', attendedBy: 'Siva',   remarks: 'Looking for imported marble.',     source: 'Engineer', size: '2500+', houseType: 'New', stage: 'Flooring Stage', budget: 'High', date: '2026-07-02' },
+  { id: 'C-003', name: 'Meena Rajan',         phone: '9003344556', location: 'RS Puram',        custType: 'Owner',       expectedAmt: '₹30,000',   attendedBy: 'Ramesh', remarks: 'Price too high initially.',         source: 'Walk In', size: '750+', houseType: 'Renovation', stage: 'Planning', budget: 'Low', date: '2026-07-01' },
+]
+
 if (!fs.existsSync(LEADS_FILE)) {
   fs.writeFileSync(LEADS_FILE, JSON.stringify(INITIAL_LEADS, null, 2), 'utf-8')
 }
 if (!fs.existsSync(ORDERS_FILE)) {
   fs.writeFileSync(ORDERS_FILE, JSON.stringify(INITIAL_ORDERS, null, 2), 'utf-8')
+}
+if (!fs.existsSync(CUSTOMERS_FILE)) {
+  fs.writeFileSync(CUSTOMERS_FILE, JSON.stringify(INITIAL_CUSTOMERS, null, 2), 'utf-8')
 }
 
 // ─── Local File Helpers ───────────────────────────────────────────────────────
@@ -71,6 +81,15 @@ const getLocalOrders = () => {
 
 const saveLocalOrders = (orders) => {
   fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2), 'utf-8')
+}
+
+const getLocalCustomers = () => {
+  try { return JSON.parse(fs.readFileSync(CUSTOMERS_FILE, 'utf-8')) }
+  catch { return [] }
+}
+
+const saveLocalCustomers = (customers) => {
+  fs.writeFileSync(CUSTOMERS_FILE, JSON.stringify(customers, null, 2), 'utf-8')
 }
 
 // ─── Supabase Mappers ─────────────────────────────────────────────────────────
@@ -280,6 +299,55 @@ app.put('/api/orders/:id', (req, res) => {
   saveLocalOrders(localOrders)
   res.json(updatedOrder)
   console.log(`⚡ Updated order ${id} locally`)
+})
+
+// ─── GET /api/customers ──────────────────────────────────────────────────────────
+app.get('/api/customers', (req, res) => {
+  res.json(getLocalCustomers())
+})
+
+// ─── POST /api/customers ─────────────────────────────────────────────────────────
+app.post('/api/customers', (req, res) => {
+  const newCustomer = req.body
+  const localCustomers = getLocalCustomers()
+
+  if (!newCustomer.id) {
+    const nums = localCustomers.map(c => {
+      const match = c.id?.match(/^C-(\d+)$/i)
+      return match ? parseInt(match[1]) : 0
+    })
+    newCustomer.id = `C-${String(Math.max(...nums, 0) + 1).padStart(3, '0')}`
+  }
+
+  localCustomers.unshift(newCustomer)
+  saveLocalCustomers(localCustomers)
+  res.status(201).json(newCustomer)
+  console.log(`⚡ Saved customer ${newCustomer.id} locally`)
+})
+
+// ─── PUT /api/customers/:id ───────────────────────────────────────────────────────
+app.put('/api/customers/:id', (req, res) => {
+  const { id } = req.params
+  const updatedCustomer = req.body
+  const localCustomers = getLocalCustomers()
+  const idx = localCustomers.findIndex(c => c.id === id)
+  if (idx !== -1) {
+    localCustomers[idx] = updatedCustomer
+  } else {
+    localCustomers.unshift(updatedCustomer)
+  }
+  saveLocalCustomers(localCustomers)
+  res.json(updatedCustomer)
+  console.log(`⚡ Updated customer ${id} locally`)
+})
+
+// ─── DELETE /api/customers/:id ──────────────────────────────────────────────────
+app.delete('/api/customers/:id', (req, res) => {
+  const { id } = req.params
+  const localCustomers = getLocalCustomers()
+  saveLocalCustomers(localCustomers.filter(c => c.id !== id))
+  res.json({ success: true, id })
+  console.log(`⚡ Deleted customer ${id} locally`)
 })
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
