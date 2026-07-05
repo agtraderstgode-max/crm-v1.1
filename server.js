@@ -557,14 +557,51 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
       contents: [
         filePart,
         systemPrompt
-      ]
+      ],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            invoice_no: { type: 'STRING' },
+            date: { type: 'STRING' },
+            supplier_name: { type: 'STRING' },
+            supplier_gstin: { type: 'STRING' },
+            supplier_phone: { type: 'STRING' },
+            buyer_name: { type: 'STRING' },
+            buyer_gstin: { type: 'STRING' },
+            total_qty: { type: 'NUMBER' },
+            gross_amount: { type: 'NUMBER' },
+            tax_percent: { type: 'NUMBER' },
+            gst_amount: { type: 'NUMBER' },
+            total_amount: { type: 'NUMBER' },
+            items: {
+              type: 'ARRAY',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  product_name: { type: 'STRING' },
+                  size: { type: 'STRING' },
+                  finish: { type: 'STRING' },
+                  brand: { type: 'STRING' },
+                  hsn_code: { type: 'STRING' },
+                  quantity: { type: 'NUMBER' },
+                  rate: { type: 'NUMBER' },
+                  amount: { type: 'NUMBER' }
+                },
+                required: ['product_name']
+              }
+            }
+          },
+          required: ['invoice_no', 'supplier_name', 'items']
+        }
+      }
     })
 
     const text = response.text.trim()
     console.log(`✅ Gemini response:`, text)
 
-    const jsonStr = text.replace(/^```json/i, '').replace(/```$/, '').trim()
-    const invoiceData = JSON.parse(jsonStr)
+    const invoiceData = JSON.parse(text)
 
     // Check for duplicate invoice in history
     const localInvoices = getLocalInvoices()
