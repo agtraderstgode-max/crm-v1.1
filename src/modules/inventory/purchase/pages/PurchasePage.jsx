@@ -161,7 +161,25 @@ function InvoiceDetailModal({ invoice, onClose }) {
                   </span>
                 )}
               </p>
-              <p className="font-bold text-slate-400">Total Case Boxes: {invoice.total_qty || 0} BOXES</p>
+              <p className="font-bold text-slate-600">
+                Invoice Declared Boxes:{' '}
+                <span className="text-slate-800">{invoice.total_qty || 0} boxes</span>
+              </p>
+              <p className="font-bold text-slate-600">
+                Extracted Sum of Boxes:{' '}
+                <span className="text-slate-800">
+                  {(invoice.items || []).reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)} boxes
+                </span>
+                {parseInt(invoice.total_qty || 0) === (invoice.items || []).reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0) ? (
+                  <span className="text-emerald-600 font-extrabold ml-1.5 inline-flex items-center gap-0.5">
+                    <Check className="h-3 w-3 stroke-[3]" /> Matched
+                  </span>
+                ) : (
+                  <span className="text-rose-500 font-extrabold ml-1.5 inline-flex items-center gap-0.5">
+                    <ShieldAlert className="h-3 w-3" /> Mismatch
+                  </span>
+                )}
+              </p>
             </div>
             
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 text-xs space-y-2.5 font-bold text-slate-600">
@@ -529,6 +547,18 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                     ) : (
                       <span className="text-rose-600 font-bold ml-1.5 inline-flex items-center gap-0.5" title={`Mismatch: extracted ${linkedItems.length} item rows`}>
                         <ShieldAlert className="h-3 w-3" /> Mismatch (Extracted: {linkedItems.length})
+                      </span>
+                    )}
+                  </p>
+                  <p>
+                    <span className="font-bold text-slate-800">Total Boxes:</span> {scanResult.total_qty || 0} boxes 
+                    {parseInt(scanResult.total_qty || 0) === linkedItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0) ? (
+                      <span className="text-emerald-600 font-bold ml-1.5 inline-flex items-center gap-0.5" title="Matches sum of extracted quantities">
+                        <Check className="h-3 w-3 stroke-[3]" /> Matches Extracted
+                      </span>
+                    ) : (
+                      <span className="text-rose-600 font-bold ml-1.5 inline-flex items-center gap-0.5" title={`Mismatch: sum of extracted items is ${linkedItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)} boxes`}>
+                        <ShieldAlert className="h-3 w-3" /> Mismatch (Extracted: {linkedItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)})
                       </span>
                     )}
                   </p>
