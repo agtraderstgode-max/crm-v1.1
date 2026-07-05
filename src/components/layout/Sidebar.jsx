@@ -16,6 +16,7 @@ import {
   Building2,
   ShoppingBag,
   CreditCard,
+  FileSpreadsheet,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -47,6 +48,7 @@ const NAV_GROUPS = [
     items: [
       { label: 'Products',    icon: Package,        to: '/products' },
       { label: 'Stock',       icon: Warehouse,      to: '/stock' },
+      { label: 'Purchase Invoice', icon: FileSpreadsheet, to: '/purchase-invoices' },
     ],
   },
   {

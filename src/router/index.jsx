@@ -14,6 +14,7 @@ import { BillingPage }     from '@/modules/sales/billing/pages/BillingPage'
 import { ProductsPage }    from '@/modules/inventory/products/pages/ProductsPage'
 import { StockPage }       from '@/modules/inventory/stock/pages/StockPage'
 import { SettingsPage }    from '@/modules/settings/pages/SettingsPage'
+import { PurchasePage }    from '@/modules/inventory/purchase/pages/PurchasePage'
 
 export const router = createBrowserRouter([
   {
@@ -42,6 +43,7 @@ export const router = createBrowserRouter([
       // Inventory module
       { path: 'products',   element: <ProductsPage /> },
       { path: 'stock',      element: <StockPage /> },
+      { path: 'purchase-invoices', element: <PurchasePage /> },
 
       // Placeholder routes (future phases)
       { path: 'delivery',   element: <ComingSoon title="Delivery" /> },
