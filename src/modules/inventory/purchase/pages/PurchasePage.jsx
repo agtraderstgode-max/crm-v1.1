@@ -143,9 +143,25 @@ function InvoiceDetailModal({ invoice, onClose }) {
 
           {/* Totals Summary */}
           <div className="grid grid-cols-2 gap-6 pt-2">
-            <div className="text-xs text-slate-400 font-bold space-y-1 self-end">
-              <p>Total Products: {invoice.items?.length || 0} items</p>
-              <p>Total Case Boxes: {invoice.total_qty || 0} BOXES</p>
+            <div className="text-xs text-slate-500 space-y-1.5 self-end">
+              <p className="font-bold text-slate-600">
+                Invoice Declared Items (Sl. No.):{' '}
+                <span className="text-slate-800">{invoice.total_items || invoice.items?.length || 0}</span>
+              </p>
+              <p className="font-bold text-slate-600">
+                Extracted Products Count:{' '}
+                <span className="text-slate-800">{invoice.items?.length || 0}</span>
+                {parseInt(invoice.total_items || invoice.items?.length || 0) === (invoice.items?.length || 0) ? (
+                  <span className="text-emerald-600 font-extrabold ml-1.5 inline-flex items-center gap-0.5">
+                    <Check className="h-3 w-3 stroke-[3]" /> Matched
+                  </span>
+                ) : (
+                  <span className="text-rose-500 font-extrabold ml-1.5 inline-flex items-center gap-0.5">
+                    <ShieldAlert className="h-3 w-3" /> Mismatch
+                  </span>
+                )}
+              </p>
+              <p className="font-bold text-slate-400">Total Case Boxes: {invoice.total_qty || 0} BOXES</p>
             </div>
             
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 text-xs space-y-2.5 font-bold text-slate-600">
@@ -339,6 +355,7 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
         tax_percent: scanResult.tax_percent,
         gst_amount: scanResult.gst_amount,
         total_amount: scanResult.total_amount,
+        total_items: scanResult.total_items,
         items: linkedItems.map(item => ({
           product_name: item.product_name,
           size: item.size,
@@ -503,6 +520,18 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                   <p><span className="font-bold text-slate-800">Seller:</span> {scanResult.supplier_name || 'N/A'}</p>
                   {scanResult.supplier_gstin && <p><span className="font-bold text-slate-800">GSTIN:</span> {scanResult.supplier_gstin}</p>}
                   <p><span className="font-bold text-slate-800">Invoice No:</span> {scanResult.invoice_no || 'N/A'} · <span className="font-bold text-slate-800">Date:</span> {scanResult.date ? fmtDate(scanResult.date) : 'N/A'}</p>
+                  <p>
+                    <span className="font-bold text-slate-800">Total Items (Sl. No.):</span> {scanResult.total_items || 0} items 
+                    {parseInt(scanResult.total_items || 0) === linkedItems.length ? (
+                      <span className="text-emerald-600 font-bold ml-1.5 inline-flex items-center gap-0.5" title="Matches count of extracted products">
+                        <Check className="h-3 w-3 stroke-[3]" /> Matches Extracted
+                      </span>
+                    ) : (
+                      <span className="text-rose-600 font-bold ml-1.5 inline-flex items-center gap-0.5" title={`Mismatch: extracted ${linkedItems.length} item rows`}>
+                        <ShieldAlert className="h-3 w-3" /> Mismatch (Extracted: {linkedItems.length})
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <p className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">Bill Financials</p>

@@ -502,7 +502,8 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
       10. tax_percent: Overall GST rate in % (e.g., 18 or 28, combined CGST + SGST).
       11. gst_amount: Grand total of GST taxes (CGST + SGST).
       12. total_amount: Net grand total amount after taxes (net payable).
-      13. items: Array of invoice line items, each containing:
+      13. total_items: Total number of distinct items / products listed in the invoice table (usually matches the maximum Sl. No. or the count of rows in the table).
+      14. items: Array of invoice line items, each containing:
           - product_name: Item model/design description.
           - size: Item size (e.g., 12X12, 18X12).
           - finish: Item finish details (e.g. MAT, MATT, WP, SM, GL, SM ELE, etc.).
@@ -528,6 +529,7 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
         "tax_percent": number,
         "gst_amount": number,
         "total_amount": number,
+        "total_items": number,
         "items": [
           {
             "product_name": "String",
@@ -575,6 +577,7 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
             tax_percent: { type: 'NUMBER' },
             gst_amount: { type: 'NUMBER' },
             total_amount: { type: 'NUMBER' },
+            total_items: { type: 'NUMBER' },
             items: {
               type: 'ARRAY',
               items: {
@@ -617,6 +620,7 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
     const total_amount = cleanNumber(invoiceData.total_amount)
     const tax_percent = cleanNumber(invoiceData.tax_percent)
     const total_qty = Math.round(cleanNumber(invoiceData.total_qty))
+    const total_items = Math.round(cleanNumber(invoiceData.total_items))
 
     const cleanedItems = (invoiceData.items || []).map(item => {
       const qty = Math.round(cleanNumber(item.quantity))
@@ -646,6 +650,7 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
       tax_percent: tax_percent,
       gst_amount: gst_amount,
       total_amount: total_amount,
+      total_items: total_items,
       items: cleanedItems,
       is_duplicate: isDuplicate
     })
