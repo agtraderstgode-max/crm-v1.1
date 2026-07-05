@@ -448,26 +448,56 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
     const ai = new GoogleGenAI({ apiKey })
 
     const systemPrompt = `
-      You are an expert purchase invoice scanner. Analyze the uploaded invoice image or PDF document.
-      Identify and extract:
-      1. Invoice/Bill number
-      2. Supplier/Vendor name
-      3. All tile items: name, size, finish, brand, quantity (always integer count of boxes/sqft), and rate (price per unit).
+      You are an expert purchase tax invoice parser. Analyze the uploaded invoice image or PDF document.
+      Identify and extract the following details:
+      1. invoice_no: Invoice/Bill Reference Number.
+      2. date: Invoice Date (format: YYYY-MM-DD).
+      3. supplier_name: Seller company name (e.g. KAG INDIA PRIVATE LIMITED).
+      4. supplier_gstin: Seller GSTIN number (e.g. 33AADCK5381Q1Z1).
+      5. supplier_phone: Seller Phone Number.
+      6. buyer_name: Buyer company name (e.g. AG TRADERS).
+      7. buyer_gstin: Buyer GSTIN number (e.g. 33DULPN7536Q1ZQ).
+      8. total_qty: Grand total quantity of boxes (integer).
+      9. gross_amount: Subtotal / Gross amount before tax.
+      10. tax_percent: Overall GST rate in % (e.g., 18 or 28, combined CGST + SGST).
+      11. gst_amount: Grand total of GST taxes (CGST + SGST).
+      12. total_amount: Net grand total amount after taxes (net payable).
+      13. items: Array of invoice line items, each containing:
+          - product_name: Item model/design description.
+          - size: Item size (e.g., 12X12, 18X12).
+          - finish: Item finish details (e.g. MAT, MATT, WP, SM, GL, SM ELE, etc.).
+          - brand: Brand or range details (e.g. BRN FLWR, GREY GL ELE).
+          - hsn_code: HSN code (e.g., 69072300).
+          - quantity: Number of boxes (integer).
+          - rate: Purchase price per box.
+          - amount: Item total amount before tax.
 
       Provide ONLY a valid JSON object matching the schema below. No markdown wrappers.
 
       Schema:
       {
-        "invoice_no": "String (invoice/bill reference number)",
-        "supplier_name": "String (supplier name)",
+        "invoice_no": "String",
+        "date": "String",
+        "supplier_name": "String",
+        "supplier_gstin": "String",
+        "supplier_phone": "String",
+        "buyer_name": "String",
+        "buyer_gstin": "String",
+        "total_qty": number,
+        "gross_amount": number,
+        "tax_percent": number,
+        "gst_amount": number,
+        "total_amount": number,
         "items": [
           {
-            "product_name": "String (exact item description from invoice)",
-            "brand": "String (e.g. Kajaria, Somany, RAK, Orient, Johnson, if found)",
-            "quantity": number (quantity of units/boxes),
-            "rate": number (price per unit/box),
-            "size": "String (e.g. 600x600, 800x800, if found)",
-            "finish": "String (e.g. Glossy, Matte, Satin, Rough, if found)"
+            "product_name": "String",
+            "size": "String",
+            "finish": "String",
+            "brand": "String",
+            "hsn_code": "String",
+            "quantity": number,
+            "rate": number,
+            "amount": number
           }
         ]
       }
@@ -505,7 +535,17 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
 
     res.json({
       invoice_no: invoiceData.invoice_no || '',
+      date: invoiceData.date || '',
       supplier_name: invoiceData.supplier_name || '',
+      supplier_gstin: invoiceData.supplier_gstin || '',
+      supplier_phone: invoiceData.supplier_phone || '',
+      buyer_name: invoiceData.buyer_name || '',
+      buyer_gstin: invoiceData.buyer_gstin || '',
+      total_qty: parseInt(invoiceData.total_qty) || 0,
+      gross_amount: parseFloat(invoiceData.gross_amount) || 0,
+      tax_percent: parseFloat(invoiceData.tax_percent) || 0,
+      gst_amount: parseFloat(invoiceData.gst_amount) || 0,
+      total_amount: parseFloat(invoiceData.total_amount) || 0,
       items: invoiceData.items || [],
       is_duplicate: isDuplicate
     })

@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Warehouse, AlertTriangle, UploadCloud, Check, X, FileText, Settings, ShieldAlert, Sparkles } from 'lucide-react'
+import { 
+  Warehouse, AlertTriangle, UploadCloud, Check, X, FileText, 
+  Settings, ShieldAlert, Sparkles, Eye, Receipt, Calendar, ArrowUpRight 
+} from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
 
 // Levenshtein similarity metric for fuzzy matching
@@ -61,6 +64,126 @@ function findBestMatch(item, productsList) {
   
   // Enforce high confidence threshold (85% or more) to auto-match
   return maxScore >= 0.85 ? { product: bestProd, score: maxScore } : null
+}
+
+// Modal to View Full Invoice Details (Tax Invoice layout matching supplier layout)
+function InvoiceDetailModal({ invoice, onClose }) {
+  if (!invoice) return null
+
+  // Split GST equally into CGST & SGST for 18% standard, or display total GST
+  const cgstAmount = invoice.gst_amount / 2
+  const sgstAmount = invoice.gst_amount / 2
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+      <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4 flex-shrink-0">
+          <div>
+            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <Receipt className="h-5 w-5 text-blue-500" /> Purchase Invoice Summary
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">Stored Tax Invoice Records</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Invoice Body */}
+        <div className="flex-1 overflow-y-auto p-8 space-y-6">
+          
+          <div className="text-center border-b border-dashed border-slate-200 pb-4">
+            <h1 className="text-xl font-black text-slate-800 tracking-wider">TAX INVOICE</h1>
+            <p className="text-xs text-slate-500 font-bold mt-1">Invoice Number: {invoice.invoice_no} · Date: {fmtDate(invoice.date)}</p>
+          </div>
+
+          {/* Supplier and Buyer details side by side */}
+          <div className="grid grid-cols-2 gap-8 border-b border-slate-100 pb-5">
+            <div className="space-y-1.5 text-xs text-slate-600">
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Seller Information</p>
+              <p className="font-extrabold text-slate-800 text-sm">{invoice.supplier_name}</p>
+              {invoice.supplier_gstin && <p><span className="font-bold text-slate-700">GSTIN:</span> {invoice.supplier_gstin}</p>}
+              {invoice.supplier_phone && <p><span className="font-bold text-slate-700">Phone:</span> {invoice.supplier_phone}</p>}
+            </div>
+            
+            <div className="space-y-1.5 text-xs text-slate-600">
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Buyer Information</p>
+              <p className="font-extrabold text-slate-800 text-sm">{invoice.buyer_name || 'AG TRADERS'}</p>
+              {invoice.buyer_gstin && <p><span className="font-bold text-slate-700">GSTIN:</span> {invoice.buyer_gstin}</p>}
+            </div>
+          </div>
+
+          {/* Items Table */}
+          <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <table className="w-full text-xs text-slate-600">
+              <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 text-left">
+                <tr>
+                  <th className="px-4 py-2 w-10 text-center">No</th>
+                  <th className="px-4 py-2">Model Description</th>
+                  <th className="px-4 py-2">Size</th>
+                  <th className="px-4 py-2">Brand / Range</th>
+                  <th className="px-4 py-2">HSN</th>
+                  <th className="px-4 py-2 text-right">Qty (Boxes)</th>
+                  <th className="px-4 py-2 text-right">Rate</th>
+                  <th className="px-4 py-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {invoice.items && invoice.items.map((item, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-2 text-center text-slate-400 font-mono">{idx + 1}</td>
+                    <td className="px-4 py-2 font-bold text-slate-800">{item.product_name}</td>
+                    <td className="px-4 py-2 font-mono text-[11px]">{item.size || 'N/A'}</td>
+                    <td className="px-4 py-2 text-slate-500">{item.brand || 'N/A'}</td>
+                    <td className="px-4 py-2 font-mono text-slate-500">{item.hsn_code || '69072300'}</td>
+                    <td className="px-4 py-2 text-right font-semibold text-slate-800">{item.quantity}</td>
+                    <td className="px-4 py-2 text-right text-slate-700">₹{parseFloat(item.rate).toFixed(2)}</td>
+                    <td className="px-4 py-2 text-right font-bold text-slate-800">₹{parseFloat(item.amount || (item.quantity * item.rate)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Totals Summary */}
+          <div className="grid grid-cols-2 gap-6 pt-2">
+            <div className="text-xs text-slate-400 font-bold space-y-1 self-end">
+              <p>Total Products: {invoice.items?.length || 0} items</p>
+              <p>Total Case Boxes: {invoice.total_qty || 0} BOXES</p>
+            </div>
+            
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 text-xs space-y-2.5 font-bold text-slate-600">
+              <div className="flex justify-between">
+                <span>Gross Subtotal:</span>
+                <span className="text-slate-800">₹{parseFloat(invoice.gross_amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between font-medium text-slate-500 pl-4">
+                <span>CGST (9%):</span>
+                <span>₹{cgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between font-medium text-slate-500 pl-4">
+                <span>SGST (9%):</span>
+                <span>₹{sgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200 pt-2.5 text-sm text-slate-800 font-black">
+                <span>Grand Total Net Amount:</span>
+                <span className="text-blue-600">₹{parseFloat(invoice.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-slate-100 bg-slate-50 p-4 flex justify-end flex-shrink-0">
+          <button onClick={onClose} className="rounded-lg bg-slate-800 px-5 py-2 text-xs font-bold text-white hover:bg-slate-700 transition-colors cursor-pointer">
+            Close View
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
@@ -136,8 +259,10 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
           return {
             product_name: item.product_name,
             brand: item.brand || '',
+            hsn_code: item.hsn_code || '69072300',
             quantity: parseInt(item.quantity) || 0,
             rate: parseFloat(item.rate) || 0,
+            amount: parseFloat(item.amount) || (parseInt(item.quantity) * parseFloat(item.rate)) || 0,
             size: item.size || '',
             finish: item.finish || '',
             selectedId: matchInfo ? matchInfo.product.id : 'NEW',
@@ -176,11 +301,11 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
           // 1. Create a brand new variant
           const newProd = {
             name: item.product_name,
-            brand: item.brand || 'Supplier',
+            brand: item.brand || scanResult.supplier_name || 'KAG',
             category: 'Floor Tiles', // default
             size: item.size || 'N/A',
             finish: item.finish || 'Matte',
-            price: `₹${Math.round(item.rate)}/sqft`,
+            price: `₹${Math.round(item.rate * 1.35)}/sqft`, // Suggest 35% margin for retail sale
             stock: item.quantity,
             reserved: 0,
             available: item.quantity,
@@ -210,20 +335,38 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
         }
       }
 
-      // 3. Save invoice details to invoices list to block duplicates in future
+      // 3. Save full invoice details to history
       const invoiceLog = {
         invoice_no: scanResult.invoice_no,
+        date: scanResult.date || new Date().toISOString().split('T')[0],
         supplier_name: scanResult.supplier_name,
-        items_count: linkedItems.length,
-        date: new Date().toISOString().split('T')[0]
+        supplier_gstin: scanResult.supplier_gstin,
+        supplier_phone: scanResult.supplier_phone,
+        buyer_name: scanResult.buyer_name,
+        buyer_gstin: scanResult.buyer_gstin,
+        total_qty: scanResult.total_qty,
+        gross_amount: scanResult.gross_amount,
+        tax_percent: scanResult.tax_percent,
+        gst_amount: scanResult.gst_amount,
+        total_amount: scanResult.total_amount,
+        items: linkedItems.map(item => ({
+          product_name: item.product_name,
+          size: item.size,
+          brand: item.brand,
+          hsn_code: item.hsn_code,
+          quantity: item.quantity,
+          rate: item.rate,
+          amount: item.amount
+        }))
       }
+
       await fetch('/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(invoiceLog)
       })
 
-      alert('🎉 Stock updated successfully!')
+      alert('🎉 Stock updated successfully and invoice logged!')
       onRefresh()
       onClose()
     } catch (err) {
@@ -336,7 +479,7 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                 <p className="text-sm font-extrabold text-slate-700 flex items-center justify-center gap-1">
                   Gemini AI Scanning Document... <Sparkles className="h-4 w-4 text-blue-500 animate-bounce" />
                 </p>
-                <p className="text-xs text-slate-400 mt-1">Reading purchase items, quantities, and matching descriptions</p>
+                <p className="text-xs text-slate-400 mt-1">Reading purchase items, quantities, tax levels, and company details</p>
               </div>
             </div>
           )}
@@ -370,18 +513,18 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
               )}
 
               {/* Invoice details summary */}
-              <div className="grid grid-cols-3 gap-4 bg-slate-50 border border-slate-100 rounded-xl p-4 text-xs font-medium text-slate-600">
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase tracking-wider font-bold">Invoice Ref No</span>
-                  <span className="font-bold text-slate-800 text-sm mt-0.5 block">{scanResult.invoice_no || 'N/A'}</span>
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 border border-slate-100 rounded-xl p-4 text-xs font-medium text-slate-600">
+                <div className="space-y-2">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">Supplier &amp; Bill</p>
+                  <p><span className="font-bold text-slate-800">Seller:</span> {scanResult.supplier_name || 'N/A'}</p>
+                  {scanResult.supplier_gstin && <p><span className="font-bold text-slate-800">GSTIN:</span> {scanResult.supplier_gstin}</p>}
+                  <p><span className="font-bold text-slate-800">Invoice No:</span> {scanResult.invoice_no || 'N/A'} · <span className="font-bold text-slate-800">Date:</span> {scanResult.date ? fmtDate(scanResult.date) : 'N/A'}</p>
                 </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase tracking-wider font-bold">Supplier Name</span>
-                  <span className="font-bold text-slate-800 text-sm mt-0.5 block">{scanResult.supplier_name || 'N/A'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase tracking-wider font-bold">Uploaded Document</span>
-                  <span className="font-bold text-slate-800 text-sm mt-0.5 block truncate">{file.name}</span>
+                <div className="space-y-2">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">Bill Financials</p>
+                  <p><span className="font-bold text-slate-800">Gross Subtotal:</span> ₹{scanResult.gross_amount?.toLocaleString('en-IN')}</p>
+                  <p><span className="font-bold text-slate-800">GST amount ({scanResult.tax_percent}%):</span> ₹{scanResult.gst_amount?.toLocaleString('en-IN')}</p>
+                  <p><span className="font-bold text-slate-800">Net Payable:</span> ₹{scanResult.total_amount?.toLocaleString('en-IN')}</p>
                 </div>
               </div>
 
@@ -404,7 +547,7 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                           <td className="px-4 py-3">
                             <span className="font-bold text-slate-800 block text-xs">{item.product_name}</span>
                             <span className="text-[10px] text-slate-400">
-                              Size: {item.size || 'N/A'} · Finish: {item.finish || 'N/A'} · Brand: {item.brand || 'N/A'}
+                              Size: {item.size || 'N/A'} · Brand/Range: {item.brand || 'N/A'} · HSN: {item.hsn_code}
                             </span>
                           </td>
                           <td className="px-4 py-3 font-semibold text-slate-700 text-xs">
@@ -419,7 +562,7 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                               <option value="NEW">➕ Create as New Product Variant</option>
                               {products.map(p => (
                                 <option key={p.id} value={p.id}>
-                                  [{p.id}] {p.name}
+                                  [{p.id}] {p.name} ({p.size || 'No Size'})
                                 </option>
                               ))}
                             </select>
@@ -484,8 +627,11 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
 
 export function StockPage() {
   const [products, setProducts] = useState([])
+  const [invoices, setInvoices] = useState([])
+  const [activeTab, setActiveTab] = useState('stock') // 'stock' or 'invoices'
   const [loading, setLoading] = useState(true)
   const [importOpen, setImportOpen] = useState(false)
+  const [selectedInvoice, setSelectedInvoice] = useState(null)
 
   const fetchStock = () => {
     setLoading(true)
@@ -501,8 +647,21 @@ export function StockPage() {
       })
   }
 
+  const fetchInvoices = () => {
+    fetch('/api/invoices')
+      .then(res => res.json())
+      .then(data => {
+        // Sort newest invoices first
+        setInvoices(data.reverse())
+      })
+      .catch(err => {
+        console.error("Error loading invoices:", err)
+      })
+  }
+
   useEffect(() => {
     fetchStock()
+    fetchInvoices()
   }, [])
 
   const getStockStatus = (stock, min) => {
@@ -515,15 +674,16 @@ export function StockPage() {
 
   return (
     <div className="space-y-5">
+      {/* Title block */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            Stock Overview <Warehouse className="h-5 w-5 text-blue-500" />
+            Showroom Inventory <Warehouse className="h-5 w-5 text-blue-500" />
           </h1>
-          <p className="text-sm text-slate-500">Current stock levels across all products</p>
+          <p className="text-sm text-slate-500">Track stock levels and scan incoming supplier invoices</p>
         </div>
         <div className="flex items-center gap-3">
-          {lowCount > 0 && (
+          {activeTab === 'stock' && lowCount > 0 && (
             <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm font-semibold text-red-700">
               <AlertTriangle className="h-4 w-4" />
               {lowCount} low stock alerts
@@ -531,69 +691,149 @@ export function StockPage() {
           )}
           <button
             onClick={() => setImportOpen(true)}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors shadow-sm cursor-pointer animate-pulse-once"
           >
-            <UploadCloud className="h-4 w-4" /> Import Invoice
+            <UploadCloud className="h-4 w-4" /> Import Purchase Invoice
           </button>
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="py-20 text-center text-slate-400 text-sm font-medium">Loading stock metrics...</div>
-        ) : products.length === 0 ? (
-          <div className="py-20 text-center text-slate-400 text-sm font-medium">No products in stock list.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                {['Product','Brand','Category','Current Qty','Reserved','Available','Min Level','Status'].map(h => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {products.map(s => {
-                const stat = getStockStatus(s.stock, s.min)
-                const availableQty = (s.stock || 0) - (s.reserved || 0)
-                
-                return (
-                  <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-5 py-3.5">
-                      <span className="font-semibold text-slate-800 block">{s.name}</span>
-                      <span className="text-[10px] text-slate-400 font-medium">SKU: {s.id} · Finish: {s.finish || 'Matte'}</span>
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-600 font-medium">{s.brand}</td>
-                    <td className="px-5 py-3.5 text-slate-600 font-medium">{s.category}</td>
-                    <td className="px-5 py-3.5 font-bold text-slate-700">{s.stock} {s.unit || 'boxes'}</td>
-                    <td className="px-5 py-3.5 text-amber-600 font-bold">{s.reserved || 0}</td>
-                    <td className="px-5 py-3.5 text-emerald-700 font-bold">{availableQty}</td>
-                    <td className="px-5 py-3.5 text-slate-500 font-medium">{s.min}</td>
-                    <td className="px-5 py-3.5">
-                      <span className={cn(
-                        'rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                        stat === 'OK'
-                          ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                          : stat === 'Low'
-                            ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                            : 'bg-red-100 text-red-700 border border-red-200'
-                      )}>
-                        {stat}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
+      {/* Tabs list */}
+      <div className="flex border-b border-slate-200">
+        <button
+          onClick={() => setActiveTab('stock')}
+          className={cn(
+            'px-5 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer',
+            activeTab === 'stock'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-400 hover:text-slate-600'
+          )}
+        >
+          Stock Levels
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('invoices')
+            fetchInvoices()
+          }}
+          className={cn(
+            'px-5 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer',
+            activeTab === 'invoices'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-400 hover:text-slate-600'
+          )}
+        >
+          Imported Invoices History ({invoices.length})
+        </button>
       </div>
 
+      {/* Tab Panel contents */}
+      {activeTab === 'stock' ? (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          {loading ? (
+            <div className="py-20 text-center text-slate-400 text-sm font-medium">Loading stock metrics...</div>
+          ) : products.length === 0 ? (
+            <div className="py-20 text-center text-slate-400 text-sm font-medium">No products in stock list.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  {['Product','Brand','Category','Current Qty','Reserved','Available','Min Level','Status'].map(h => (
+                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {products.map(s => {
+                  const stat = getStockStatus(s.stock, s.min)
+                  const availableQty = (s.stock || 0) - (s.reserved || 0)
+                  
+                  return (
+                    <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-3.5">
+                        <span className="font-semibold text-slate-800 block">{s.name}</span>
+                        <span className="text-[10px] text-slate-400 font-medium">SKU: {s.id} · Size: {s.size || 'N/A'} · Finish: {s.finish || 'Matte'}</span>
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-600 font-medium">{s.brand}</td>
+                      <td className="px-5 py-3.5 text-slate-600 font-medium">{s.category}</td>
+                      <td className="px-5 py-3.5 font-bold text-slate-700">{s.stock} {s.unit || 'boxes'}</td>
+                      <td className="px-5 py-3.5 text-amber-600 font-bold">{s.reserved || 0}</td>
+                      <td className="px-5 py-3.5 text-emerald-700 font-bold">{availableQty}</td>
+                      <td className="px-5 py-3.5 text-slate-500 font-medium">{s.min}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={cn(
+                          'rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                          stat === 'OK'
+                            ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                            : stat === 'Low'
+                              ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                              : 'bg-red-100 text-red-700 border border-red-200'
+                        )}>
+                          {stat}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          {invoices.length === 0 ? (
+            <div className="py-20 text-center text-slate-400 text-sm font-medium">
+              No purchase bills imported yet. Click Import Invoice to begin.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  {['Invoice No','Invoice Date','Supplier Company','GSTIN','Total Boxes','Net Total Bill',''].map(h => (
+                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {invoices.map((inv, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-5 py-3.5 font-bold text-slate-800">{inv.invoice_no}</td>
+                    <td className="px-5 py-3.5 text-slate-600 font-semibold">{fmtDate(inv.date)}</td>
+                    <td className="px-5 py-3.5 text-slate-800 font-bold">{inv.supplier_name}</td>
+                    <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{inv.supplier_gstin || 'N/A'}</td>
+                    <td className="px-5 py-3.5 font-bold text-slate-700">{inv.total_qty} boxes</td>
+                    <td className="px-5 py-3.5 font-bold text-blue-600">₹{parseFloat(inv.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-5 py-3.5 text-right">
+                      <button
+                        onClick={() => setSelectedInvoice(inv)}
+                        className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer shadow-xs transition-all"
+                      >
+                        <Eye className="h-3.5 w-3.5 text-slate-400" /> View Details
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Upload/Import Dialog */}
       <InvoiceImportModal
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}
-        onRefresh={fetchStock}
+        onRefresh={() => {
+          fetchStock()
+          fetchInvoices()
+        }}
         products={products}
+      />
+
+      {/* Bill detailed viewer Dialog */}
+      <InvoiceDetailModal
+        invoice={selectedInvoice}
+        onClose={() => setSelectedInvoice(null)}
       />
     </div>
   )
