@@ -36,20 +36,31 @@ function getSimilarity(s1, s2) {
   return (longerLength - costs[shorter.length]) / parseFloat(longerLength)
 }
 
-function findBestMatch(itemName, productsList) {
+function findBestMatch(item, productsList) {
   let bestProd = null
   let maxScore = 0
   
+  const itemSizeNorm = item.size ? String(item.size).toLowerCase().replace(/\s+/g, '') : ''
+
   productsList.forEach(p => {
+    // If sizes are present and different, reject the match (score = 0)
+    if (itemSizeNorm && p.size) {
+      const pSizeNorm = String(p.size).toLowerCase().replace(/\s+/g, '')
+      if (itemSizeNorm !== pSizeNorm) {
+        return // skip: sizes are different
+      }
+    }
+    
     // Check match against product name or ID
-    const score = Math.max(getSimilarity(itemName, p.name), getSimilarity(itemName, p.id))
+    const score = Math.max(getSimilarity(item.product_name, p.name), getSimilarity(item.product_name, p.id))
     if (score > maxScore) {
       maxScore = score
       bestProd = p
     }
   })
   
-  return maxScore >= 0.35 ? { product: bestProd, score: maxScore } : null
+  // Enforce high confidence threshold (85% or more) to auto-match
+  return maxScore >= 0.85 ? { product: bestProd, score: maxScore } : null
 }
 
 function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
@@ -121,7 +132,7 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
         setScanResult(result)
         // Setup initial fuzzy mappings
         const initialLinks = result.items.map(item => {
-          const matchInfo = findBestMatch(item.product_name, products)
+          const matchInfo = findBestMatch(item, products)
           return {
             product_name: item.product_name,
             brand: item.brand || '',
