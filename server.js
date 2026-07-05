@@ -5,6 +5,9 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { createClient } from '@supabase/supabase-js'
 
+import multer from 'multer'
+import { GoogleGenAI } from '@google/genai'
+
 const app = express()
 const PORT = 5001
 
@@ -20,6 +23,8 @@ const DATA_DIR = path.join(__dirname, 'data')
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json')
 const ORDERS_FILE = path.join(DATA_DIR, 'orders.json')
 const CUSTOMERS_FILE = path.join(DATA_DIR, 'customers.json')
+const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json')
+const INVOICES_FILE = path.join(DATA_DIR, 'invoices.json')
 
 // ─── Supabase Client ─────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://emiwizejpibhvdoylbmb.supabase.co'
@@ -63,6 +68,9 @@ if (!fs.existsSync(ORDERS_FILE)) {
 if (!fs.existsSync(CUSTOMERS_FILE)) {
   fs.writeFileSync(CUSTOMERS_FILE, JSON.stringify(INITIAL_CUSTOMERS, null, 2), 'utf-8')
 }
+if (!fs.existsSync(INVOICES_FILE)) {
+  fs.writeFileSync(INVOICES_FILE, JSON.stringify([], null, 2), 'utf-8')
+}
 
 // ─── Local File Helpers ───────────────────────────────────────────────────────
 const getLocalLeads = () => {
@@ -90,6 +98,24 @@ const getLocalCustomers = () => {
 
 const saveLocalCustomers = (customers) => {
   fs.writeFileSync(CUSTOMERS_FILE, JSON.stringify(customers, null, 2), 'utf-8')
+}
+
+const getLocalProducts = () => {
+  try { return JSON.parse(fs.readFileSync(PRODUCTS_FILE, 'utf-8')) }
+  catch { return [] }
+}
+
+const saveLocalProducts = (products) => {
+  fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(products, null, 2), 'utf-8')
+}
+
+const getLocalInvoices = () => {
+  try { return JSON.parse(fs.readFileSync(INVOICES_FILE, 'utf-8')) }
+  catch { return [] }
+}
+
+const saveLocalInvoices = (invoices) => {
+  fs.writeFileSync(INVOICES_FILE, JSON.stringify(invoices, null, 2), 'utf-8')
 }
 
 // ─── Supabase Mappers ─────────────────────────────────────────────────────────
@@ -348,6 +374,146 @@ app.delete('/api/customers/:id', (req, res) => {
   saveLocalCustomers(localCustomers.filter(c => c.id !== id))
   res.json({ success: true, id })
   console.log(`⚡ Deleted customer ${id} locally`)
+})
+
+// ─── GET /api/products ───────────────────────────────────────────────────────────
+app.get('/api/products', (req, res) => {
+  res.json(getLocalProducts())
+})
+
+// ─── POST /api/products ──────────────────────────────────────────────────────────
+app.post('/api/products', (req, res) => {
+  const newProduct = req.body
+  const localProducts = getLocalProducts()
+  
+  if (!newProduct.id) {
+    const nums = localProducts.map(p => {
+      const match = p.id?.match(/^TL-(\d+)$/i)
+      return match ? parseInt(match[1]) : 0
+    })
+    newProduct.id = `TL-${String(Math.max(...nums, 0) + 1).padStart(3, '0')}`
+  }
+
+  localProducts.push(newProduct)
+  saveLocalProducts(localProducts)
+  res.status(201).json(newProduct)
+  console.log(`⚡ Saved product ${newProduct.id} locally`)
+})
+
+// ─── PUT /api/products/:id ───────────────────────────────────────────────────────
+app.put('/api/products/:id', (req, res) => {
+  const { id } = req.params
+  const updatedProduct = req.body
+  const localProducts = getLocalProducts()
+  const idx = localProducts.findIndex(p => p.id === id)
+  if (idx !== -1) {
+    localProducts[idx] = updatedProduct
+  } else {
+    localProducts.push(updatedProduct)
+  }
+  saveLocalProducts(localProducts)
+  res.json(updatedProduct)
+  console.log(`⚡ Updated product ${id} locally`)
+})
+
+// ─── GET /api/invoices ───────────────────────────────────────────────────────────
+app.get('/api/invoices', (req, res) => {
+  res.json(getLocalInvoices())
+})
+
+// ─── POST /api/invoices ──────────────────────────────────────────────────────────
+app.post('/api/invoices', (req, res) => {
+  const newInvoice = req.body // { invoice_no, supplier_name, items_count, date }
+  const localInvoices = getLocalInvoices()
+  localInvoices.push(newInvoice)
+  saveLocalInvoices(localInvoices)
+  res.status(201).json(newInvoice)
+  console.log(`⚡ Saved invoice ${newInvoice.invoice_no} to history`)
+})
+
+// ─── Multer Middleware for File Upload ──────────────────────────────────────────
+const upload = multer({ storage: multer.memoryStorage() })
+
+// ─── POST /api/upload-invoice ───────────────────────────────────────────────────
+app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
+  try {
+    const file = req.file
+    if (!file) return res.status(400).json({ error: 'No invoice file uploaded.' })
+
+    const apiKey = req.headers['x-gemini-key'] || process.env.GEMINI_API_KEY
+    if (!apiKey) {
+      return res.status(400).json({ error: 'Gemini API Key is missing. Please configure it in Settings.' })
+    }
+
+    const ai = new GoogleGenAI({ apiKey })
+
+    const systemPrompt = `
+      You are an expert purchase invoice scanner. Analyze the uploaded invoice image or PDF document.
+      Identify and extract:
+      1. Invoice/Bill number
+      2. Supplier/Vendor name
+      3. All tile items: name, size, finish, brand, quantity (always integer count of boxes/sqft), and rate (price per unit).
+
+      Provide ONLY a valid JSON object matching the schema below. No markdown wrappers.
+
+      Schema:
+      {
+        "invoice_no": "String (invoice/bill reference number)",
+        "supplier_name": "String (supplier name)",
+        "items": [
+          {
+            "product_name": "String (exact item description from invoice)",
+            "brand": "String (e.g. Kajaria, Somany, RAK, Orient, Johnson, if found)",
+            "quantity": number (quantity of units/boxes),
+            "rate": number (price per unit/box),
+            "size": "String (e.g. 600x600, 800x800, if found)",
+            "finish": "String (e.g. Glossy, Matte, Satin, Rough, if found)"
+          }
+        ]
+      }
+    `
+
+    const filePart = {
+      inlineData: {
+        data: file.buffer.toString('base64'),
+        mimeType: file.mimetype
+      }
+    }
+
+    console.log(`🤖 Processing invoice with Gemini 2.5 Flash (${file.size} bytes, ${file.mimetype})...`)
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
+        filePart,
+        systemPrompt
+      ]
+    })
+
+    const text = response.text.trim()
+    console.log(`✅ Gemini response:`, text)
+
+    const jsonStr = text.replace(/^```json/i, '').replace(/```$/, '').trim()
+    const invoiceData = JSON.parse(jsonStr)
+
+    // Check for duplicate invoice in history
+    const localInvoices = getLocalInvoices()
+    const isDuplicate = localInvoices.some(inv => 
+      inv.invoice_no === invoiceData.invoice_no && 
+      inv.supplier_name.toLowerCase() === invoiceData.supplier_name.toLowerCase()
+    )
+
+    res.json({
+      invoice_no: invoiceData.invoice_no || '',
+      supplier_name: invoiceData.supplier_name || '',
+      items: invoiceData.items || [],
+      is_duplicate: isDuplicate
+    })
+
+  } catch (error) {
+    console.error('Gemini invoice scanning error:', error)
+    res.status(500).json({ error: error.message || 'Failed to scan purchase invoice.' })
+  }
 })
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
