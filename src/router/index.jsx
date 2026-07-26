@@ -3,6 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 
 // Pages — each module has its own page
 import { DashboardPage }   from '@/modules/dashboard/pages/DashboardPage'
+import { AnalysisPage }    from '@/modules/analysis/pages/AnalysisPage'
 import { CustomersPage }   from '@/modules/crm/customers/pages/CustomersPage'
 import { LeadsPage }       from '@/modules/crm/leads/pages/LeadsPage'
 import { FollowupsPage }   from '@/modules/crm/followups/pages/FollowupsPage'
@@ -15,6 +16,7 @@ import { ProductsPage }    from '@/modules/inventory/products/pages/ProductsPage
 import { StockPage }       from '@/modules/inventory/stock/pages/StockPage'
 import { SettingsPage }    from '@/modules/settings/pages/SettingsPage'
 import { PurchasePage }    from '@/modules/inventory/purchase/pages/PurchasePage'
+import { PriceCategoriesPage } from '@/modules/inventory/price-categories/pages/PriceCategoriesPage'
 
 export const router = createBrowserRouter([
   {
@@ -26,6 +28,7 @@ export const router = createBrowserRouter([
 
       // Core
       { path: 'dashboard',  element: <DashboardPage /> },
+      { path: 'analysis',   element: <AnalysisPage /> },
       { path: 'settings',   element: <SettingsPage /> },
 
       // CRM module
@@ -44,6 +47,7 @@ export const router = createBrowserRouter([
       { path: 'products',   element: <ProductsPage /> },
       { path: 'stock',      element: <StockPage /> },
       { path: 'purchase-invoices', element: <PurchasePage /> },
+      { path: 'price-categories', element: <PriceCategoriesPage /> },
 
       // Placeholder routes (future phases)
       { path: 'delivery',   element: <ComingSoon title="Delivery" /> },

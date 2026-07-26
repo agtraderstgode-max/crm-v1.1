@@ -25,6 +25,9 @@ const ORDERS_FILE = path.join(DATA_DIR, 'orders.json')
 const CUSTOMERS_FILE = path.join(DATA_DIR, 'customers.json')
 const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json')
 const INVOICES_FILE = path.join(DATA_DIR, 'invoices.json')
+const CATEGORIES_FILE = path.join(DATA_DIR, 'categories.json')
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json')
+
 
 // ─── Supabase Client ─────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://emiwizejpibhvdoylbmb.supabase.co'
@@ -108,6 +111,29 @@ const getLocalProducts = () => {
 const saveLocalProducts = (products) => {
   fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(products, null, 2), 'utf-8')
 }
+
+const getLocalCategories = () => {
+  try { return JSON.parse(fs.readFileSync(CATEGORIES_FILE, 'utf-8')) }
+  catch { return [] }
+}
+
+const saveLocalCategories = (categories) => {
+  fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categories, null, 2), 'utf-8')
+}
+
+const getPricingSettings = () => {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'))
+    }
+  } catch {}
+  return { discount_percentage: 15 }
+}
+
+const savePricingSettings = (settings) => {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8')
+}
+
 
 const getLocalInvoices = () => {
   try { return JSON.parse(fs.readFileSync(INVOICES_FILE, 'utf-8')) }
@@ -378,7 +404,34 @@ app.delete('/api/customers/:id', (req, res) => {
 
 // ─── GET /api/products ───────────────────────────────────────────────────────────
 app.get('/api/products', (req, res) => {
-  res.json(getLocalProducts())
+  const products = getLocalProducts()
+  const categories = getLocalCategories()
+  
+  const joined = products.map(p => {
+    if (p.category_id && p.category_id !== 'NO_CAT') {
+      const cat = categories.find(c => c.id === p.category_id)
+      if (cat) {
+        return {
+          ...p,
+          mrp: cat.mrp,
+          online_price: cat.online_price,
+          sqft_price: cat.sqft_price,
+          price: `₹${cat.sqft_price}/sqft`,
+          pcs_per_box: cat.pcs_per_box,
+          sqft_per_box: cat.sqft_per_box,
+          weight_per_box: cat.weight_per_box,
+          category: cat.name // map display category in UI
+        }
+      }
+    } else if (p.category_id === 'NO_CAT') {
+      return {
+        ...p,
+        category: 'No Category'
+      }
+    }
+    return p
+  })
+  res.json(joined)
 })
 
 // ─── POST /api/products ──────────────────────────────────────────────────────────
@@ -416,6 +469,120 @@ app.put('/api/products/:id', (req, res) => {
   console.log(`⚡ Updated product ${id} locally`)
 })
 
+// ─── GET /api/categories ─────────────────────────────────────────────────────────
+app.get('/api/categories', (req, res) => {
+  res.json(getLocalCategories())
+})
+
+// ─── POST /api/categories ────────────────────────────────────────────────────────
+app.post('/api/categories', (req, res) => {
+  const newCat = req.body
+  const categories = getLocalCategories()
+  
+  if (!newCat.id) {
+    const nums = categories.map(c => {
+      const match = c.id?.match(/^CAT-(\d+)$/i)
+      return match ? parseInt(match[1]) : 0
+    })
+    newCat.id = `CAT-${String(Math.max(...nums, 0) + 1).padStart(3, '0')}`
+  }
+  
+  const settings = getPricingSettings()
+  const defaultPct = settings.discount_percentage || 15
+  const pct = newCat.discount_pct !== undefined ? parseFloat(newCat.discount_pct) : defaultPct
+  
+  newCat.discount_pct = pct
+  
+  // Calculate pricing based on formula
+  const mrp = parseFloat(newCat.mrp || 0)
+  const sqft = parseFloat(newCat.sqft_per_box || 1)
+  newCat.online_price = Math.round(mrp * (1 - pct / 100))
+  newCat.sqft_price = Math.round(newCat.online_price / sqft)
+  
+  categories.push(newCat)
+  saveLocalCategories(categories)
+  res.status(201).json(newCat)
+  console.log(`⚡ Saved category ${newCat.id} locally`)
+})
+
+// ─── PUT /api/categories/:id ─────────────────────────────────────────────────────
+app.put('/api/categories/:id', (req, res) => {
+  const { id } = req.params
+  const updated = req.body
+  const categories = getLocalCategories()
+  const idx = categories.findIndex(c => c.id === id)
+  if (idx !== -1) {
+    const settings = getPricingSettings()
+    const defaultPct = settings.discount_percentage || 15
+    const pct = updated.discount_pct !== undefined ? parseFloat(updated.discount_pct) : defaultPct
+    
+    updated.discount_pct = pct
+
+    const mrp = parseFloat(updated.mrp || 0)
+    const sqft = parseFloat(updated.sqft_per_box || 1)
+    updated.online_price = Math.round(mrp * (1 - pct / 100))
+    updated.sqft_price = Math.round(updated.online_price / sqft)
+    
+    categories[idx] = { ...categories[idx], ...updated }
+    saveLocalCategories(categories)
+    res.json(categories[idx])
+    console.log(`⚡ Updated category ${id} locally`)
+  } else {
+    res.status(404).json({ error: 'Category not found' })
+  }
+})
+
+// ─── GET /api/pricing-settings ───────────────────────────────────────────────────
+app.get('/api/pricing-settings', (req, res) => {
+  res.json(getPricingSettings())
+})
+
+// ─── POST /api/pricing-settings ──────────────────────────────────────────────────
+app.post('/api/pricing-settings', (req, res) => {
+  const { discount_percentage } = req.body
+  if (discount_percentage === undefined || isNaN(discount_percentage)) {
+    return res.status(400).json({ error: 'Invalid discount percentage.' })
+  }
+  
+  const pct = parseFloat(discount_percentage)
+  savePricingSettings({ discount_percentage: pct })
+  
+  // Recalculate categories
+  const categories = getLocalCategories()
+  const updated = categories.map(c => {
+    const mrp = parseFloat(c.mrp || 0)
+    const sqft = parseFloat(c.sqft_per_box || 1)
+    const online_price = Math.round(mrp * (1 - pct / 100))
+    const sqft_price = Math.round(online_price / sqft)
+    return {
+      ...c,
+      discount_pct: pct, // reset category custom discount percentage to global
+      online_price,
+      sqft_price
+    }
+  })
+  saveLocalCategories(updated)
+  
+  res.json({ success: true, discount_percentage: pct, count: updated.length })
+  console.log(`⚡ Re-calculated prices for ${updated.length} categories with ${pct}% discount`)
+})
+
+
+// ─── DELETE /api/categories/:id ──────────────────────────────────────────────────
+app.delete('/api/categories/:id', (req, res) => {
+  const { id } = req.params
+  const categories = getLocalCategories()
+  const idx = categories.findIndex(c => c.id === id)
+  if (idx !== -1) {
+    categories.splice(idx, 1)
+    saveLocalCategories(categories)
+    res.json({ success: true, message: `Category ${id} deleted successfully.` })
+    console.log(`⚡ Deleted category ${id} locally`)
+  } else {
+    res.status(404).json({ error: 'Category not found' })
+  }
+})
+
 // ─── GET /api/invoices ───────────────────────────────────────────────────────────
 app.get('/api/invoices', (req, res) => {
   res.json(getLocalInvoices())
@@ -424,11 +591,43 @@ app.get('/api/invoices', (req, res) => {
 // ─── POST /api/invoices ──────────────────────────────────────────────────────────
 app.post('/api/invoices', (req, res) => {
   const newInvoice = req.body // { invoice_no, supplier_name, items_count, date }
+  newInvoice.stock_status = newInvoice.stock_status || 'pending'
   const localInvoices = getLocalInvoices()
   localInvoices.push(newInvoice)
   saveLocalInvoices(localInvoices)
   res.status(201).json(newInvoice)
   console.log(`⚡ Saved invoice ${newInvoice.invoice_no} to history`)
+})
+
+// ─── PUT /api/invoices/:invoice_no ───────────────────────────────────────────────
+app.put('/api/invoices/:invoice_no', (req, res) => {
+  const { invoice_no } = req.params
+  const updatedFields = req.body
+  const localInvoices = getLocalInvoices()
+  const idx = localInvoices.findIndex(inv => inv.invoice_no === invoice_no)
+  if (idx !== -1) {
+    localInvoices[idx] = { ...localInvoices[idx], ...updatedFields }
+    saveLocalInvoices(localInvoices)
+    res.json(localInvoices[idx])
+    console.log(`⚡ Updated invoice ${invoice_no} fields:`, updatedFields)
+  } else {
+    res.status(404).json({ error: 'Invoice not found' })
+  }
+})
+
+// ─── DELETE /api/invoices/:invoice_no ────────────────────────────────────────────
+app.delete('/api/invoices/:invoice_no', (req, res) => {
+  const { invoice_no } = req.params
+  const localInvoices = getLocalInvoices()
+  const idx = localInvoices.findIndex(inv => inv.invoice_no === invoice_no)
+  if (idx !== -1) {
+    localInvoices.splice(idx, 1)
+    saveLocalInvoices(localInvoices)
+    res.json({ success: true, message: `Invoice ${invoice_no} deleted successfully.` })
+    console.log(`⚡ Deleted invoice ${invoice_no} from history`)
+  } else {
+    res.status(404).json({ error: 'Invoice not found' })
+  }
 })
 
 // ─── Multer Middleware for File Upload ──────────────────────────────────────────
@@ -480,7 +679,143 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
     const file = req.file
     if (!file) return res.status(400).json({ error: 'No invoice file uploaded.' })
 
+    if (req.headers['x-provider'] === 'mistral') {
+      const mistralKey = req.headers['x-mistral-key'];
+      if (!mistralKey) {
+        return res.status(400).json({ error: 'Mistral API Key is missing. Please configure it in settings.' });
+      }
+
+      console.log(`🤖 Processing invoice with Mistral OCR (${file.size} bytes)...`);
+
+      // 1. Call Mistral OCR Endpoint
+      const base64Data = file.buffer.toString('base64');
+      const dataUri = `data:${file.mimetype};base64,${base64Data}`;
+
+      const ocrResponse = await fetch('https://api.mistral.ai/v1/ocr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${mistralKey}`
+        },
+        body: JSON.stringify({
+          model: 'mistral-ocr-latest',
+          document: {
+            type: 'document_url',
+            document_url: dataUri
+          }
+        })
+      });
+
+      if (!ocrResponse.ok) {
+        const errText = await ocrResponse.text();
+        throw new Error(`Mistral OCR API failed: ${errText}`);
+      }
+
+      const ocrResult = await ocrResponse.json();
+      const markdownText = ocrResult.pages.map(p => p.markdown).join('\n');
+
+      console.log('🤖 Structuring extracted markdown using mistral-large-latest completions...');
+
+      // 2. Call Mistral Completions Endpoint to structure the JSON
+      const systemPromptText = `
+        You are an expert purchase tax invoice parser. Analyze the provided invoice text.
+        Identify and extract the following details and return ONLY a valid JSON object matching the requested schema.
+        Do not include markdown tags, comments, or wrappers. Just return the raw JSON object.
+
+        Schema:
+        {
+          "invoice_no": string,
+          "date": string (format: YYYY-MM-DD),
+          "supplier_name": string (Seller company name),
+          "supplier_gstin": string (Seller GSTIN),
+          "supplier_phone": string (Seller phone),
+          "buyer_name": string (Buyer name),
+          "buyer_gstin": string (Buyer GSTIN),
+          "total_qty": number (Grand total quantity of boxes),
+          "gross_amount": number (Gross amount before tax),
+          "tax_percent": number (Overall GST rate in %),
+          "gst_amount": number (Grand total of GST taxes),
+          "total_amount": number (Grand total bill amount),
+          "total_items": number (Highest Serial Number / item count declared in the invoice),
+          "items": [
+            {
+              "product_name": string,
+              "size": string (extract exactly what is written in the Size column of the invoice, preserving attributes like "WP", "WP MAT", "PGVT", "HG", e.g., "12X12 WP MAT", "18X12 WP", "48X24 PGVT"),
+              "finish": string,
+              "brand": string,
+              "hsn_code": string,
+              "quantity": number,
+              "rate": number,
+              "amount": number
+            }
+          ]
+        }
+      `;
+
+      const chatResponse = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${mistralKey}`
+        },
+        body: JSON.stringify({
+          model: 'mistral-large-latest',
+          messages: [
+            { role: 'system', content: systemPromptText },
+            { role: 'user', content: markdownText }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (!chatResponse.ok) {
+        const errText = await chatResponse.text();
+        throw new Error(`Mistral Completions API failed: ${errText}`);
+      }
+
+      const chatResult = await chatResponse.json();
+      const contentText = chatResult.choices[0].message.content;
+      
+      const parsed = JSON.parse(contentText);
+
+      const cleanedResult = {
+        invoice_no: parsed.invoice_no || 'N/A',
+        date: cleanDate(parsed.date),
+        supplier_name: parsed.supplier_name || 'N/A',
+        supplier_gstin: parsed.supplier_gstin || '',
+        supplier_phone: parsed.supplier_phone || '',
+        buyer_name: parsed.buyer_name || '',
+        buyer_gstin: parsed.buyer_gstin || '',
+        total_qty: cleanNumber(parsed.total_qty),
+        gross_amount: cleanNumber(parsed.gross_amount),
+        tax_percent: cleanNumber(parsed.tax_percent),
+        gst_amount: cleanNumber(parsed.gst_amount),
+        total_amount: cleanNumber(parsed.total_amount),
+        total_items: cleanNumber(parsed.total_items),
+        items: (parsed.items || []).map(item => ({
+          product_name: item.product_name || 'N/A',
+          size: String(item.size || '').toUpperCase().trim(),
+          finish: item.finish || 'Matte',
+          brand: item.brand || parsed.supplier_name || 'KAG',
+          hsn_code: String(item.hsn_code || '69072300').replace(/\D/g, ''),
+          quantity: cleanNumber(item.quantity),
+          rate: cleanNumber(item.rate),
+          amount: cleanNumber(item.amount)
+        }))
+      };
+
+      const localInvoices = getLocalInvoices();
+      const isDuplicate = localInvoices.some(inv => 
+        inv.invoice_no === cleanedResult.invoice_no && 
+        inv.supplier_name === cleanedResult.supplier_name
+      );
+      cleanedResult.is_duplicate = isDuplicate;
+
+      return res.json(cleanedResult);
+    }
+
     const apiKey = req.headers['x-gemini-key'] || process.env.GEMINI_API_KEY
+    const modelName = req.headers['x-gemini-model'] || 'gemini-2.5-flash'
     if (!apiKey) {
       return res.status(400).json({ error: 'Gemini API Key is missing. Please configure it in Settings.' })
     }
@@ -505,7 +840,7 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
       13. total_items: The total number of products/items listed in the invoice. Scan the serial number column in the invoice table (often labeled 'No', 'Sl. No.', 'S.No.', 'SNo', 'SlNo', 'No. of Items', etc.) and extract the highest number (maximum/last serial number value) from this column (for example: if the rows are numbered 1 to 9, the total_items value is 9). If no serial number column exists, count the total rows in the item list table.
       14. items: Array of invoice line items, each containing:
           - product_name: Item model/design description.
-          - size: Item size (e.g., 12X12, 18X12).
+          - size: Item size (extract exactly what is written in the Size column of the invoice table, preserving any text/attributes like "WP", "WP MAT", "PGVT", "HG", e.g., "12X12 WP MAT", "18X12 WP", "48X24 PGVT").
           - finish: Item finish details (e.g. MAT, MATT, WP, SM, GL, SM ELE, etc.).
           - brand: Brand or range details (e.g. BRN FLWR, GREY GL ELE).
           - hsn_code: HSN code (e.g., 69072300).
@@ -552,10 +887,10 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
       }
     }
 
-    console.log(`🤖 Processing invoice with Gemini 2.5 Flash (${file.size} bytes, ${file.mimetype})...`)
+    console.log(`🤖 Processing invoice with ${modelName} (${file.size} bytes, ${file.mimetype})...`)
     
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: modelName,
       contents: [
         filePart,
         systemPrompt

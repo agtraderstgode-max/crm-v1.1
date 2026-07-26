@@ -2,6 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
+  BarChart3,
   Users,
   TrendingUp,
   CalendarCheck,
@@ -17,6 +18,7 @@ import {
   ShoppingBag,
   CreditCard,
   FileSpreadsheet,
+  Layers,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -24,6 +26,7 @@ const NAV_GROUPS = [
     label: 'Main',
     items: [
       { label: 'Dashboard',    icon: LayoutDashboard, to: '/dashboard' },
+      { label: 'Analysis',     icon: BarChart3,       to: '/analysis' },
     ],
   },
   {
@@ -49,6 +52,7 @@ const NAV_GROUPS = [
       { label: 'Products',    icon: Package,        to: '/products' },
       { label: 'Stock',       icon: Warehouse,      to: '/stock' },
       { label: 'Purchase Invoice', icon: FileSpreadsheet, to: '/purchase-invoices' },
+      { label: 'Price Category', icon: Layers,       to: '/price-categories' },
     ],
   },
   {

@@ -455,6 +455,120 @@ async function loadCSVOnStartup() {
       console.warn(`Dynamic CSV fetch for ${file} failed (expected if opening file:// directly).`, e);
     }
   }
+
+  // After CSV loading, enrich TILE_DB with CRM products data (sqftPrice, weight)
+  await loadProductsIntoTileDB();
+}
+
+// ─── CRM Products → TILE_DB Pipeline ─────────────────────────────────────────
+// Fetches products from the CRM inventory API and enriches/merges into TILE_DB
+// so the quotation planner gets live sqft pricing, weight, and coverage data
+// without changing any existing quotation calculation logic.
+async function loadProductsIntoTileDB() {
+  try {
+    const res = await fetch('/api/products');
+    if (!res.ok) {
+      console.warn('⚠️ Could not fetch /api/products for TILE_DB enrichment');
+      return;
+    }
+    const products = await res.json();
+    if (!Array.isArray(products) || products.length === 0) return;
+
+    // Build a lookup map of existing TILE_DB entries by normalized name
+    const existingMap = new Map();
+    TILE_DB.forEach((tile, idx) => {
+      existingMap.set(tile.name.toUpperCase().trim(), idx);
+    });
+
+    // Helper: extract just the dimension part from size (e.g. "48X24 HG" → "48X24")
+    const getDimension = (size) => {
+      const m = size.match(/(\d+X\d+)/i);
+      return m ? m[1].toUpperCase() : '';
+    };
+
+    // Helper: find matching TILE_DB index using multiple strategies
+    const findMatch = (displayName, nameOnly, dimension) => {
+      // Strategy 1: Exact full match ("AGATHA BEIGE 48X24 PGVT" === "AGATHA BEIGE 48X24 PGVT")
+      if (existingMap.has(displayName)) return existingMap.get(displayName);
+
+      // Strategy 2: Name + dimension only ("HG IMPALA BLACK 48X24 HG" → try "HG IMPALA BLACK 48X24")
+      if (dimension) {
+        const dimOnly = `${nameOnly} ${dimension}`;
+        if (existingMap.has(dimOnly)) return existingMap.get(dimOnly);
+      }
+
+      // Strategy 3: Check if any TILE_DB entry starts with product name + dim
+      // e.g. TILE_DB has "HG IMPALA BLACK 48X24", product is "HG IMPALA BLACK 48X24 HG"
+      for (const [tdbName, idx] of existingMap) {
+        if (displayName.startsWith(tdbName) || tdbName.startsWith(displayName)) {
+          return idx;
+        }
+      }
+
+      return undefined;
+    };
+
+    let enriched = 0;
+    let added = 0;
+
+    // Helper: default coverage by dimension string
+    const getFallbackCoverage = (dim) => {
+      if (dim.includes('48X24') || dim.includes('24X24')) return 15.5;
+      if (dim.includes('18X12') || dim.includes('12X12')) return 8.72;
+      if (dim.includes('16X16')) return 8.61;
+      if (dim.includes('15X10')) return 8.07;
+      if (dim.includes('12X8')) return 7.75;
+      return 10.0;
+    };
+
+    products.forEach(p => {
+      if (!p.name || !p.size || p.size === 'N/A') return;
+
+      const nameOnly = p.name.trim().toUpperCase();
+      const sizeStr = p.size.trim().toUpperCase();
+      const displayName = `${nameOnly} ${sizeStr}`;
+      const dimension = getDimension(sizeStr);
+      
+      const sqftPrice = p.sqft_price || parseFloat(String(p.price || '').replace(/[^\d.]/g, '')) || 0;
+      const coverage = p.sqft_per_box || getFallbackCoverage(dimension);
+      const weight = p.weight_per_box || 0;
+
+      const matchIdx = findMatch(displayName, nameOnly, dimension);
+
+      if (matchIdx !== undefined) {
+        // Enrich existing TILE_DB entry with pricing from CRM products
+        if (sqftPrice > 0) TILE_DB[matchIdx].sqftPrice = sqftPrice;
+        if (coverage > 0) TILE_DB[matchIdx].coverage = coverage;
+        if (weight > 0) TILE_DB[matchIdx].weight = weight;
+        enriched++;
+      } else {
+        // Add new product to TILE_DB that doesn't exist yet
+        TILE_DB.push({
+          name: displayName,
+          coverage: coverage,
+          weight: weight || 0,
+          sqftPrice: sqftPrice
+        });
+        existingMap.set(displayName, TILE_DB.length - 1);
+        added++;
+      }
+    });
+
+    if (added > 0 || enriched > 0) {
+      console.log(`🔗 CRM Products → TILE_DB: ${enriched} enriched, ${added} new added (Total: ${TILE_DB.length})`);
+    }
+  } catch (e) {
+    console.warn('⚠️ CRM products pipeline failed (non-critical):', e);
+  }
+}
+
+// Auto-sync products from CRM every 5 seconds & on window focus/tab switch
+if (typeof window !== 'undefined') {
+  window.addEventListener('focus', () => loadProductsIntoTileDB());
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) loadProductsIntoTileDB();
+  });
+  setInterval(loadProductsIntoTileDB, 5000);
 }
 
 function handleCSVUpload(event) {
