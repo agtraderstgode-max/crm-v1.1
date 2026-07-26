@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   BarChart3,
   Users,
+  UserCheck,
   TrendingUp,
   CalendarCheck,
   FileText,
@@ -58,7 +59,8 @@ const NAV_GROUPS = [
   {
     label: 'Operations',
     items: [
-      { label: 'Delivery',    icon: Truck,          to: '/delivery' },
+      { label: 'Delivery',      icon: Truck,          to: '/delivery' },
+      { label: 'Staff Records', icon: UserCheck,      to: '/staff' },
     ],
   },
   {

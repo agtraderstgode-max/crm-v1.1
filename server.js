@@ -27,6 +27,7 @@ const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json')
 const INVOICES_FILE = path.join(DATA_DIR, 'invoices.json')
 const CATEGORIES_FILE = path.join(DATA_DIR, 'categories.json')
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json')
+const STAFF_FILE = path.join(DATA_DIR, 'staff.json')
 
 
 // ─── Supabase Client ─────────────────────────────────────────────────────────
@@ -73,6 +74,57 @@ if (!fs.existsSync(CUSTOMERS_FILE)) {
 }
 if (!fs.existsSync(INVOICES_FILE)) {
   fs.writeFileSync(INVOICES_FILE, JSON.stringify([], null, 2), 'utf-8')
+}
+const INITIAL_STAFF = [
+  {
+    id: 'STF-001',
+    name: 'Ramesh Kumar',
+    role: 'Showroom Executive / Sales',
+    phone: '9876543210',
+    email: 'ramesh@tilescrm.com',
+    status: 'Active',
+    workingHours: '09:00 AM - 07:00 PM',
+    shiftHours: 10,
+    workingDays: '6 Days (Mon - Sat)',
+    joinDate: '2025-01-15',
+    attendance: [
+      { date: '2026-07-25', checkIn: '09:05 AM', checkOut: '07:10 PM', totalHours: 10, status: 'Present', notes: 'Attended 4 walk-ins' },
+      { date: '2026-07-24', checkIn: '08:58 AM', checkOut: '07:00 PM', totalHours: 10, status: 'Present', notes: '' }
+    ]
+  },
+  {
+    id: 'STF-002',
+    name: 'Siva Subramaniam',
+    role: 'Inventory & Stock Manager',
+    phone: '9845612307',
+    email: 'siva@tilescrm.com',
+    status: 'Active',
+    workingHours: '08:30 AM - 06:30 PM',
+    shiftHours: 10,
+    workingDays: '6 Days (Mon - Sat)',
+    joinDate: '2025-03-01',
+    attendance: [
+      { date: '2026-07-25', checkIn: '08:30 AM', checkOut: '06:30 PM', totalHours: 10, status: 'Present', notes: 'Unloaded 2 KAG trucks' }
+    ]
+  },
+  {
+    id: 'STF-003',
+    name: 'Priya Dharshini',
+    role: 'Billing & Accounts Executive',
+    phone: '9003344556',
+    email: 'priya@tilescrm.com',
+    status: 'Active',
+    workingHours: '09:30 AM - 06:30 PM',
+    shiftHours: 9,
+    workingDays: '6 Days (Mon - Sat)',
+    joinDate: '2025-05-10',
+    attendance: [
+      { date: '2026-07-25', checkIn: '09:30 AM', checkOut: '06:30 PM', totalHours: 9, status: 'Present', notes: 'Generated 14 invoices' }
+    ]
+  }
+]
+if (!fs.existsSync(STAFF_FILE)) {
+  fs.writeFileSync(STAFF_FILE, JSON.stringify(INITIAL_STAFF, null, 2), 'utf-8')
 }
 
 // ─── Local File Helpers ───────────────────────────────────────────────────────
@@ -142,6 +194,15 @@ const getLocalInvoices = () => {
 
 const saveLocalInvoices = (invoices) => {
   fs.writeFileSync(INVOICES_FILE, JSON.stringify(invoices, null, 2), 'utf-8')
+}
+
+const getLocalStaff = () => {
+  try { return JSON.parse(fs.readFileSync(STAFF_FILE, 'utf-8')) }
+  catch { return [] }
+}
+
+const saveLocalStaff = (staff) => {
+  fs.writeFileSync(STAFF_FILE, JSON.stringify(staff, null, 2), 'utf-8')
 }
 
 // ─── Supabase Mappers ─────────────────────────────────────────────────────────
@@ -537,7 +598,73 @@ app.get('/api/pricing-settings', (req, res) => {
   res.json(getPricingSettings())
 })
 
-// ─── POST /api/pricing-settings ──────────────────────────────────────────────────
+// ─── GET /api/staff ─────────────────────────────────────────────────────────────
+app.get('/api/staff', (req, res) => {
+  res.json(getLocalStaff())
+})
+
+// ─── POST /api/staff ────────────────────────────────────────────────────────────
+app.post('/api/staff', (req, res) => {
+  const newMember = req.body
+  const staff = getLocalStaff()
+  if (!newMember.id) {
+    const nextNum = staff.length + 1
+    newMember.id = `STF-${String(nextNum).padStart(3, '0')}`
+  }
+  if (!newMember.attendance) newMember.attendance = []
+  staff.push(newMember)
+  saveLocalStaff(staff)
+  res.status(201).json(newMember)
+  console.log(`⚡ Added staff member ${newMember.id} (${newMember.name})`)
+})
+
+// ─── PUT /api/staff/:id ─────────────────────────────────────────────────────────
+app.put('/api/staff/:id', (req, res) => {
+  const { id } = req.params
+  const updated = req.body
+  const staff = getLocalStaff()
+  const idx = staff.findIndex(s => s.id === id)
+  if (idx !== -1) {
+    staff[idx] = { ...staff[idx], ...updated }
+    saveLocalStaff(staff)
+    res.json(staff[idx])
+    console.log(`⚡ Updated staff member ${id}`)
+  } else {
+    res.status(404).json({ error: 'Staff member not found' })
+  }
+})
+
+// ─── DELETE /api/staff/:id ──────────────────────────────────────────────────────
+app.delete('/api/staff/:id', (req, res) => {
+  const { id } = req.params
+  const staff = getLocalStaff()
+  const filtered = staff.filter(s => s.id !== id)
+  saveLocalStaff(filtered)
+  res.json({ success: true, id })
+  console.log(`⚡ Deleted staff member ${id}`)
+})
+
+// ─── POST /api/staff/:id/attendance ───────────────────────────────────────────
+app.post('/api/staff/:id/attendance', (req, res) => {
+  const { id } = req.params
+  const record = req.body // { date, checkIn, checkOut, totalHours, status, notes }
+  const staff = getLocalStaff()
+  const member = staff.find(s => s.id === id)
+  if (member) {
+    if (!member.attendance) member.attendance = []
+    const existingIdx = member.attendance.findIndex(a => a.date === record.date)
+    if (existingIdx !== -1) {
+      member.attendance[existingIdx] = { ...member.attendance[existingIdx], ...record }
+    } else {
+      member.attendance.unshift(record)
+    }
+    saveLocalStaff(staff)
+    res.json(member)
+    console.log(`⚡ Logged attendance for staff ${id} on ${record.date}`)
+  } else {
+    res.status(404).json({ error: 'Staff member not found' })
+  }
+})
 app.post('/api/pricing-settings', (req, res) => {
   const { discount_percentage } = req.body
   if (discount_percentage === undefined || isNaN(discount_percentage)) {
