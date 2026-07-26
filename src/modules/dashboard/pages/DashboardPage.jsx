@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   Users, TrendingUp, CalendarCheck, Receipt,
   ShoppingCart, Package, ArrowUpRight, ArrowDownRight,
-  MapPin, Phone, Clock, FileText, Sparkles, Key, Lock,
+  MapPin, Phone, Clock, FileText, Sparkles, Key,
   LogIn, LogOut, CheckCircle2, AlertCircle, UserCheck
 } from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
@@ -104,11 +104,10 @@ export function DashboardPage() {
   const [staffList, setStaffList] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // Staff Punch-In / Sign-Off State
-  const [punchMode, setPunchMode] = useState('in') // 'in' (Sign-In) | 'out' (Sign-Off)
+  // Staff Punch State
+  const [punchMode, setPunchMode] = useState('in') // 'in' | 'out'
   const [selectedStaffId, setSelectedStaffId] = useState('')
   const [passcode, setPasscode] = useState('')
-  const [notes, setNotes] = useState('')
   const [punchStatusMsg, setPunchStatusMsg] = useState({ type: '', text: '' })
   const [submittingPunch, setSubmittingPunch] = useState(false)
 
@@ -137,7 +136,7 @@ export function DashboardPage() {
     loadAllData()
   }, [])
 
-  // Handle Staff Punch In / Out Submit
+  // Handle Staff Punch Submit
   const handlePunchSubmit = async (e) => {
     e.preventDefault()
     if (!selectedStaffId) {
@@ -161,19 +160,17 @@ export function DashboardPage() {
         body: JSON.stringify({
           staffId: selectedStaffId,
           passcode,
-          date: getTodayStr(),
-          notes
+          date: getTodayStr()
         })
       })
 
       const data = await res.json()
       if (res.ok) {
-        setPunchStatusMsg({ type: 'success', text: data.message || 'Operation successful!' })
+        setPunchStatusMsg({ type: 'success', text: data.message || 'Done!' })
         setPasscode('')
-        setNotes('')
-        loadAllData() // Reload staff logs
+        loadAllData()
       } else {
-        setPunchStatusMsg({ type: 'error', text: data.error || 'Passcode verification failed.' })
+        setPunchStatusMsg({ type: 'error', text: data.error || 'Incorrect passcode.' })
       }
     } catch (err) {
       console.error(err)
@@ -194,22 +191,13 @@ export function DashboardPage() {
   // --- Calculations ---
   const todayStr = getTodayStr()
 
-  // 1. Total Customers Count
   const totalCustomers = customers.length
-
-  // 2. Active Leads Count (Not Lost, Not Bought)
   const activeLeadsCount = leads.filter(l => l.status !== 'Lost Customer' && l.status !== 'Customer Bought').length
-
-  // 3. Followups Due Today
   const followupsToday = leads.filter(l => l.nextDate === todayStr)
   const followupsTodayCount = followupsToday.length
-
-  // 4. Overdue Followups
   const overdueFollowups = leads.filter(l => l.nextDate && l.nextDate < todayStr && l.status !== 'Lost Customer' && l.status !== 'Customer Bought')
-
   const activeFollowupsList = [...followupsToday, ...overdueFollowups].slice(0, 5)
 
-  // 5. Today's Collections (Revenue)
   let todayRevenue = 0
   orders.forEach(o => {
     if (o.payments) {
@@ -221,15 +209,13 @@ export function DashboardPage() {
     }
   })
 
-  // 6. Pending Orders
   const pendingOrdersCount = orders.filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled').length
 
-  // 7. Recent Leads
   const sortedRecentLeads = [...leads]
     .sort((a, b) => b.id.localeCompare(a.id))
     .slice(0, 5)
 
-  // 8. Currently Signed In Staff Today
+  // Currently Signed In Staff Today
   const todaySignedInStaff = staffList.filter(s => {
     const todayLog = (s.attendance || []).find(a => a.date === todayStr)
     return todayLog && todayLog.checkIn && (!todayLog.checkOut || todayLog.checkOut === 'In Progress')
@@ -307,158 +293,106 @@ export function DashboardPage() {
         ))}
       </div>
 
-      {/* 🌟 STAFF DAILY SHIFT PUNCH-IN & SIGN-OFF WIDGET 🌟 */}
-      <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-slate-900 via-slate-900 to-blue-950 p-6 text-white shadow-xl">
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+      {/* 🌟 SHORT, NEAT & SIMPLE STAFF PUNCH BAR 🌟 */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-3">
           
-          {/* Left Title & Status Info */}
-          <div className="space-y-2 max-w-md">
-            <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/20 px-3 py-1 text-xs font-bold text-blue-300 border border-blue-400/30">
-              <Clock className="h-3.5 w-3.5 text-blue-400" /> Daily Staff Shift Punch
+          {/* Left: Icon & Mode Switcher */}
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center">
+              <Clock className="h-5 w-5" />
             </div>
-            <h2 className="text-lg font-bold tracking-tight text-white">Staff Morning Login & Evening Sign-Off</h2>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Shared showroom terminal: Enter your staff passcode (PIN) to record daily start time or sign off end shift.
-            </p>
-
-            {/* Currently On-Duty Staff Badges */}
-            <div className="pt-2 flex items-center gap-2 flex-wrap text-xs">
-              <span className="text-slate-400 font-medium text-[11px]">On-Duty Today ({todaySignedInStaff.length}):</span>
-              {todaySignedInStaff.length === 0 ? (
-                <span className="text-slate-500 text-[11px] italic">No staff signed in yet</span>
-              ) : (
-                todaySignedInStaff.map(s => (
-                  <span key={s.id} className="inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md text-[11px] font-bold">
-                    <UserCheck className="h-3 w-3 text-emerald-400" /> {s.name}
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-slate-900">Staff Shift Punch</span>
+                {todaySignedInStaff.length > 0 && (
+                  <span className="bg-emerald-50 text-emerald-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-200">
+                    {todaySignedInStaff.length} On-Duty
                   </span>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Right Punch Form Card */}
-          <div className="w-full lg:w-[460px] bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10 space-y-4">
-            
-            {/* Mode Switcher Tabs */}
-            <div className="grid grid-cols-2 gap-1 bg-slate-950/60 p-1 rounded-lg border border-white/10">
-              <button
-                type="button"
-                onClick={() => { setPunchMode('in'); setPunchStatusMsg({ type: '', text: '' }); }}
-                className={cn(
-                  'flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-md transition-all',
-                  punchMode === 'in'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
                 )}
-              >
-                <LogIn className="h-3.5 w-3.5" /> Morning Sign-In
-              </button>
-              <button
-                type="button"
-                onClick={() => { setPunchMode('out'); setPunchStatusMsg({ type: '', text: '' }); }}
-                className={cn(
-                  'flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-md transition-all',
-                  punchMode === 'out'
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white'
-                )}
-              >
-                <LogOut className="h-3.5 w-3.5" /> Evening Sign-Off
-              </button>
-            </div>
-
-            {/* Alert Message */}
-            {punchStatusMsg.text && (
-              <div className={cn(
-                'p-2.5 rounded-lg text-xs font-bold flex items-center gap-2 animate-in fade-in duration-200',
-                punchStatusMsg.type === 'success'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-              )}>
-                {punchStatusMsg.type === 'success' ? <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 text-rose-400 flex-shrink-0" />}
-                <span>{punchStatusMsg.text}</span>
               </div>
-            )}
-
-            {/* Form Fields */}
-            <form onSubmit={handlePunchSubmit} className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">
-                  Select Staff Member
-                </label>
-                <select
-                  value={selectedStaffId}
-                  onChange={(e) => setSelectedStaffId(e.target.value)}
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white outline-none focus:border-blue-500 font-semibold"
-                  required
+              <div className="flex gap-1.5 mt-1">
+                <button
+                  type="button"
+                  onClick={() => { setPunchMode('in'); setPunchStatusMsg({ type: '', text: '' }); }}
+                  className={cn(
+                    'text-xs font-bold px-2.5 py-0.5 rounded-md transition-all cursor-pointer',
+                    punchMode === 'in'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-500 hover:text-slate-900'
+                  )}
                 >
-                  <option value="" disabled>-- Select Your Name --</option>
-                  {staffList.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.id} - {s.username || 'staff'})
-                    </option>
-                  ))}
-                </select>
+                  Sign-In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPunchMode('out'); setPunchStatusMsg({ type: '', text: '' }); }}
+                  className={cn(
+                    'text-xs font-bold px-2.5 py-0.5 rounded-md transition-all cursor-pointer',
+                    punchMode === 'out'
+                      ? 'bg-rose-600 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-500 hover:text-slate-900'
+                  )}
+                >
+                  Sign-Off
+                </button>
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">
-                    Passcode (PIN)
-                  </label>
-                  <div className="relative">
-                    <Key className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                    <input
-                      type="password"
-                      placeholder="Enter passcode"
-                      value={passcode}
-                      onChange={(e) => setPasscode(e.target.value)}
-                      className="w-full rounded-lg bg-slate-900 border border-slate-700 pl-8 pr-3 py-2 text-xs text-white font-mono font-bold outline-none focus:border-blue-500"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">
-                    {punchMode === 'in' ? 'Morning Tasks / Note' : 'Shift Remarks'}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={punchMode === 'in' ? 'e.g. On-time start' : 'e.g. Shift completed'}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={submittingPunch}
-                className={cn(
-                  'w-full py-2.5 rounded-lg text-xs font-extrabold uppercase tracking-wider text-white shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer',
-                  punchMode === 'in'
-                    ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
-                    : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/30',
-                  submittingPunch && 'opacity-50 cursor-not-allowed'
-                )}
-              >
-                {submittingPunch ? (
-                  'Verifying Passcode...'
-                ) : punchMode === 'in' ? (
-                  <>
-                    <LogIn className="h-4 w-4" /> Sign In & Start Work
-                  </>
-                ) : (
-                  <>
-                    <LogOut className="h-4 w-4" /> Sign Off & End Shift
-                  </>
-                )}
-              </button>
-            </form>
+            </div>
           </div>
+
+          {/* Inline Form */}
+          <form onSubmit={handlePunchSubmit} className="flex items-center gap-2 w-full md:w-auto">
+            <select
+              value={selectedStaffId}
+              onChange={(e) => setSelectedStaffId(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white"
+              required
+            >
+              <option value="" disabled>-- Select Staff --</option>
+              {staffList.map(s => (
+                <option key={s.id} value={s.id}>{s.name} ({s.id})</option>
+              ))}
+            </select>
+
+            <div className="relative w-28">
+              <Key className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <input
+                type="password"
+                placeholder="PIN"
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-8 pr-2.5 py-2 text-xs font-mono font-bold text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={submittingPunch}
+              className={cn(
+                'rounded-xl px-4 py-2 text-xs font-extrabold text-white shadow-sm transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap',
+                punchMode === 'in' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-rose-600 hover:bg-rose-700',
+                submittingPunch && 'opacity-50'
+              )}
+            >
+              {punchMode === 'in' ? <LogIn className="h-3.5 w-3.5" /> : <LogOut className="h-3.5 w-3.5" />}
+              {punchMode === 'in' ? 'Sign In' : 'Sign Off'}
+            </button>
+          </form>
         </div>
+
+        {/* Success / Error Toast */}
+        {punchStatusMsg.text && (
+          <div className={cn(
+            'mt-3 p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in duration-200',
+            punchStatusMsg.type === 'success'
+              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              : 'bg-rose-50 text-rose-700 border border-rose-200'
+          )}>
+            {punchStatusMsg.type === 'success' ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <AlertCircle className="h-4 w-4 text-rose-600" />}
+            <span>{punchStatusMsg.text}</span>
+          </div>
+        )}
       </div>
 
       {/* Bottom 2 panels */}
