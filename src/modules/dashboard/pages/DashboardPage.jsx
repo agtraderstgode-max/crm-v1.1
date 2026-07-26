@@ -152,6 +152,8 @@ export function DashboardPage() {
     setPunchStatusMsg({ type: '', text: '' })
 
     const endpoint = punchMode === 'in' ? '/api/staff/punch-in' : '/api/staff/punch-out'
+    const autoTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+    const autoDate = getTodayStr()
 
     try {
       const res = await fetch(endpoint, {
@@ -160,13 +162,15 @@ export function DashboardPage() {
         body: JSON.stringify({
           staffId: selectedStaffId,
           passcode,
-          date: getTodayStr()
+          date: autoDate,
+          checkIn: autoTime,
+          checkOut: autoTime
         })
       })
 
       const data = await res.json()
       if (res.ok) {
-        setPunchStatusMsg({ type: 'success', text: data.message || 'Done!' })
+        setPunchStatusMsg({ type: 'success', text: data.message || `Signed ${punchMode === 'in' ? 'in' : 'off'} at ${autoTime}` })
         setPasscode('')
         loadAllData()
       } else {
@@ -174,7 +178,7 @@ export function DashboardPage() {
       }
     } catch (err) {
       console.error(err)
-      setPunchStatusMsg({ type: 'error', text: 'Network connection error.' })
+      setPunchStatusMsg({ type: 'error', text: 'Server offline. Please run start_crm.command or npm run dev' })
     } finally {
       setSubmittingPunch(false)
     }
