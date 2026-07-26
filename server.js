@@ -662,6 +662,80 @@ app.post('/api/staff/:id/attendance', (req, res) => {
     res.status(404).json({ error: 'Staff member not found' })
   }
 })
+
+// ─── POST /api/staff/punch-in (Morning Login) ──────────────────────────────
+app.post('/api/staff/punch-in', (req, res) => {
+  const { staffId, passcode, date, checkIn, notes } = req.body
+  const staff = getLocalStaff()
+  const member = staff.find(s => s.id === staffId || s.username === staffId)
+  if (!member) {
+    return res.status(404).json({ error: 'Staff member not found.' })
+  }
+  // Verify passcode
+  if (member.passcode && member.passcode !== passcode) {
+    return res.status(401).json({ error: 'Incorrect passcode. Please try again.' })
+  }
+
+  if (!member.attendance) member.attendance = []
+  const todayStr = date || new Date().toISOString().split('T')[0]
+  const timeStr = checkIn || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+
+  const existingIdx = member.attendance.findIndex(a => a.date === todayStr)
+  if (existingIdx !== -1) {
+    member.attendance[existingIdx].checkIn = timeStr
+    member.attendance[existingIdx].status = 'Present'
+    if (notes) member.attendance[existingIdx].notes = notes
+  } else {
+    member.attendance.unshift({
+      date: todayStr,
+      checkIn: timeStr,
+      checkOut: 'In Progress',
+      totalHours: 0,
+      status: 'Present',
+      notes: notes || 'Morning Sign-In'
+    })
+  }
+  saveLocalStaff(staff)
+  console.log(`⚡ Staff Sign-In: ${member.name} (${member.id}) at ${timeStr}`)
+  res.json({ success: true, member, message: `Welcome ${member.name}! Signed in at ${timeStr}` })
+})
+
+// ─── POST /api/staff/punch-out (Evening Sign-Off) ───────────────────────────
+app.post('/api/staff/punch-out', (req, res) => {
+  const { staffId, passcode, date, checkOut, notes } = req.body
+  const staff = getLocalStaff()
+  const member = staff.find(s => s.id === staffId || s.username === staffId)
+  if (!member) {
+    return res.status(404).json({ error: 'Staff member not found.' })
+  }
+  // Verify passcode
+  if (member.passcode && member.passcode !== passcode) {
+    return res.status(401).json({ error: 'Incorrect passcode. Please try again.' })
+  }
+
+  if (!member.attendance) member.attendance = []
+  const todayStr = date || new Date().toISOString().split('T')[0]
+  const timeStr = checkOut || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+
+  const existingIdx = member.attendance.findIndex(a => a.date === todayStr)
+  if (existingIdx !== -1) {
+    member.attendance[existingIdx].checkOut = timeStr
+    if (notes) member.attendance[existingIdx].notes = notes
+    member.attendance[existingIdx].totalHours = member.shiftHours || 9
+  } else {
+    member.attendance.unshift({
+      date: todayStr,
+      checkIn: '09:00 AM',
+      checkOut: timeStr,
+      totalHours: member.shiftHours || 9,
+      status: 'Present',
+      notes: notes || 'Evening Sign-Off'
+    })
+  }
+  saveLocalStaff(staff)
+  console.log(`⚡ Staff Sign-Off: ${member.name} (${member.id}) at ${timeStr}`)
+  res.json({ success: true, member, message: `Goodbye ${member.name}! Signed off at ${timeStr}` })
+})
 app.post('/api/pricing-settings', (req, res) => {
   const { discount_percentage } = req.body
   if (discount_percentage === undefined || isNaN(discount_percentage)) {

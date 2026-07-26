@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import {
   Users, TrendingUp, CalendarCheck, Receipt,
   ShoppingCart, Package, ArrowUpRight, ArrowDownRight,
-  MapPin, Phone, Clock, FileText, Sparkles
+  MapPin, Phone, Clock, FileText, Sparkles, Key, Lock,
+  LogIn, LogOut, CheckCircle2, AlertCircle, UserCheck
 } from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
 
@@ -39,8 +40,6 @@ function StatCard({ title, value, sub, icon: Icon, color, bgGradient }) {
       <div className="mt-4 flex items-center gap-1.5 relative z-10">
         <span className="text-[11px] font-medium text-slate-400">{sub}</span>
       </div>
-      
-      {/* Decorative gradient overlay on hover */}
       <div className={cn('absolute inset-0 opacity-0 group-hover:opacity-[0.02] transition-opacity duration-300 pointer-events-none', bgGradient)} />
     </div>
   )
@@ -102,30 +101,91 @@ export function DashboardPage() {
   const [customers, setCustomers] = useState([])
   const [leads, setLeads] = useState([])
   const [orders, setOrders] = useState([])
+  const [staffList, setStaffList] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  // Staff Punch-In / Sign-Off State
+  const [punchMode, setPunchMode] = useState('in') // 'in' (Sign-In) | 'out' (Sign-Off)
+  const [selectedStaffId, setSelectedStaffId] = useState('')
+  const [passcode, setPasscode] = useState('')
+  const [notes, setNotes] = useState('')
+  const [punchStatusMsg, setPunchStatusMsg] = useState({ type: '', text: '' })
+  const [submittingPunch, setSubmittingPunch] = useState(false)
+
+  const loadAllData = () => {
     setLoading(true)
     Promise.all([
       fetch('/api/customers').then(res => res.json()).catch(() => []),
       fetch('/api/leads').then(res => res.json()).catch(() => []),
-      fetch('/api/orders').then(res => res.json()).catch(() => [])
+      fetch('/api/orders').then(res => res.json()).catch(() => []),
+      fetch('/api/staff').then(res => res.json()).catch(() => [])
     ])
-    .then(([customersData, leadsData, ordersData]) => {
-      setCustomers(customersData)
-      setLeads(leadsData)
-      setOrders(ordersData)
+    .then(([customersData, leadsData, ordersData, staffData]) => {
+      setCustomers(Array.isArray(customersData) ? customersData : [])
+      setLeads(Array.isArray(leadsData) ? leadsData : [])
+      setOrders(Array.isArray(ordersData) ? ordersData : [])
+      setStaffList(Array.isArray(staffData) ? staffData : [])
       setLoading(false)
     })
     .catch(err => {
       console.error("Error fetching dashboard data:", err)
       setLoading(false)
     })
+  }
+
+  useEffect(() => {
+    loadAllData()
   }, [])
+
+  // Handle Staff Punch In / Out Submit
+  const handlePunchSubmit = async (e) => {
+    e.preventDefault()
+    if (!selectedStaffId) {
+      setPunchStatusMsg({ type: 'error', text: 'Please select a staff member.' })
+      return
+    }
+    if (!passcode) {
+      setPunchStatusMsg({ type: 'error', text: 'Please enter passcode PIN.' })
+      return
+    }
+
+    setSubmittingPunch(true)
+    setPunchStatusMsg({ type: '', text: '' })
+
+    const endpoint = punchMode === 'in' ? '/api/staff/punch-in' : '/api/staff/punch-out'
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staffId: selectedStaffId,
+          passcode,
+          date: getTodayStr(),
+          notes
+        })
+      })
+
+      const data = await res.json()
+      if (res.ok) {
+        setPunchStatusMsg({ type: 'success', text: data.message || 'Operation successful!' })
+        setPasscode('')
+        setNotes('')
+        loadAllData() // Reload staff logs
+      } else {
+        setPunchStatusMsg({ type: 'error', text: data.error || 'Passcode verification failed.' })
+      }
+    } catch (err) {
+      console.error(err)
+      setPunchStatusMsg({ type: 'error', text: 'Network connection error.' })
+    } finally {
+      setSubmittingPunch(false)
+    }
+  }
 
   if (loading) {
     return (
-      <div className="py-32 text-center text-slate-400 text-sm font-medium">
+      <div className="py-32 text-center text-slate-400 text-sm font-medium animate-pulse">
         Loading live CRM metrics...
       </div>
     )
@@ -147,7 +207,6 @@ export function DashboardPage() {
   // 4. Overdue Followups
   const overdueFollowups = leads.filter(l => l.nextDate && l.nextDate < todayStr && l.status !== 'Lost Customer' && l.status !== 'Customer Bought')
 
-  // Combine followups due today and overdue for listing
   const activeFollowupsList = [...followupsToday, ...overdueFollowups].slice(0, 5)
 
   // 5. Today's Collections (Revenue)
@@ -162,13 +221,19 @@ export function DashboardPage() {
     }
   })
 
-  // 6. Pending Orders (Any order not delivered/cancelled)
+  // 6. Pending Orders
   const pendingOrdersCount = orders.filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled').length
 
-  // 7. Recent Leads list (latest 5)
+  // 7. Recent Leads
   const sortedRecentLeads = [...leads]
     .sort((a, b) => b.id.localeCompare(a.id))
     .slice(0, 5)
+
+  // 8. Currently Signed In Staff Today
+  const todaySignedInStaff = staffList.filter(s => {
+    const todayLog = (s.attendance || []).find(a => a.date === todayStr)
+    return todayLog && todayLog.checkIn && (!todayLog.checkOut || todayLog.checkOut === 'In Progress')
+  })
 
   const stats = [
     {
@@ -192,7 +257,7 @@ export function DashboardPage() {
       value: followupsTodayCount.toString(),
       sub: `${overdueFollowups.length} follow-ups overdue`,
       icon: CalendarCheck,
-      color: 'bg-amber-50',
+      color: 'bg-amber-500',
       bgGradient: 'bg-amber-500'
     },
     {
@@ -222,7 +287,7 @@ export function DashboardPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-12">
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -242,56 +307,227 @@ export function DashboardPage() {
         ))}
       </div>
 
+      {/* 🌟 STAFF DAILY SHIFT PUNCH-IN & SIGN-OFF WIDGET 🌟 */}
+      <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-slate-900 via-slate-900 to-blue-950 p-6 text-white shadow-xl">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+          
+          {/* Left Title & Status Info */}
+          <div className="space-y-2 max-w-md">
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/20 px-3 py-1 text-xs font-bold text-blue-300 border border-blue-400/30">
+              <Clock className="h-3.5 w-3.5 text-blue-400" /> Daily Staff Shift Punch
+            </div>
+            <h2 className="text-lg font-bold tracking-tight text-white">Staff Morning Login & Evening Sign-Off</h2>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Shared showroom terminal: Enter your staff passcode (PIN) to record daily start time or sign off end shift.
+            </p>
+
+            {/* Currently On-Duty Staff Badges */}
+            <div className="pt-2 flex items-center gap-2 flex-wrap text-xs">
+              <span className="text-slate-400 font-medium text-[11px]">On-Duty Today ({todaySignedInStaff.length}):</span>
+              {todaySignedInStaff.length === 0 ? (
+                <span className="text-slate-500 text-[11px] italic">No staff signed in yet</span>
+              ) : (
+                todaySignedInStaff.map(s => (
+                  <span key={s.id} className="inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md text-[11px] font-bold">
+                    <UserCheck className="h-3 w-3 text-emerald-400" /> {s.name}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Right Punch Form Card */}
+          <div className="w-full lg:w-[460px] bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10 space-y-4">
+            
+            {/* Mode Switcher Tabs */}
+            <div className="grid grid-cols-2 gap-1 bg-slate-950/60 p-1 rounded-lg border border-white/10">
+              <button
+                type="button"
+                onClick={() => { setPunchMode('in'); setPunchStatusMsg({ type: '', text: '' }); }}
+                className={cn(
+                  'flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-md transition-all',
+                  punchMode === 'in'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                )}
+              >
+                <LogIn className="h-3.5 w-3.5" /> Morning Sign-In
+              </button>
+              <button
+                type="button"
+                onClick={() => { setPunchMode('out'); setPunchStatusMsg({ type: '', text: '' }); }}
+                className={cn(
+                  'flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-md transition-all',
+                  punchMode === 'out'
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                )}
+              >
+                <LogOut className="h-3.5 w-3.5" /> Evening Sign-Off
+              </button>
+            </div>
+
+            {/* Alert Message */}
+            {punchStatusMsg.text && (
+              <div className={cn(
+                'p-2.5 rounded-lg text-xs font-bold flex items-center gap-2 animate-in fade-in duration-200',
+                punchStatusMsg.type === 'success'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+              )}>
+                {punchStatusMsg.type === 'success' ? <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 text-rose-400 flex-shrink-0" />}
+                <span>{punchStatusMsg.text}</span>
+              </div>
+            )}
+
+            {/* Form Fields */}
+            <form onSubmit={handlePunchSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">
+                  Select Staff Member
+                </label>
+                <select
+                  value={selectedStaffId}
+                  onChange={(e) => setSelectedStaffId(e.target.value)}
+                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white outline-none focus:border-blue-500 font-semibold"
+                  required
+                >
+                  <option value="" disabled>-- Select Your Name --</option>
+                  {staffList.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.id} - {s.username || 'staff'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">
+                    Passcode (PIN)
+                  </label>
+                  <div className="relative">
+                    <Key className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="password"
+                      placeholder="Enter passcode"
+                      value={passcode}
+                      onChange={(e) => setPasscode(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 pl-8 pr-3 py-2 text-xs text-white font-mono font-bold outline-none focus:border-blue-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300 mb-1">
+                    {punchMode === 'in' ? 'Morning Tasks / Note' : 'Shift Remarks'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={punchMode === 'in' ? 'e.g. On-time start' : 'e.g. Shift completed'}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submittingPunch}
+                className={cn(
+                  'w-full py-2.5 rounded-lg text-xs font-extrabold uppercase tracking-wider text-white shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer',
+                  punchMode === 'in'
+                    ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
+                    : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/30',
+                  submittingPunch && 'opacity-50 cursor-not-allowed'
+                )}
+              >
+                {submittingPunch ? (
+                  'Verifying Passcode...'
+                ) : punchMode === 'in' ? (
+                  <>
+                    <LogIn className="h-4 w-4" /> Sign In & Start Work
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="h-4 w-4" /> Sign Off & End Shift
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
       {/* Bottom 2 panels */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
 
         {/* Recent Leads */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
-            <h2 className="text-sm font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-              <FileText className="h-4 w-4 text-blue-500" /> Recent Leads
-            </h2>
-            <a href="/leads" className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline">View all</a>
+            <div>
+              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-blue-500" /> Recent Leads
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">Latest customer enquiries added to CRM</p>
+            </div>
+            <a href="/leads" className="text-xs font-bold text-blue-600 hover:text-blue-700">
+              View all
+            </a>
           </div>
-          <div className="divide-y divide-slate-50">
+
+          <div className="space-y-1">
             {sortedRecentLeads.length === 0 ? (
-              <p className="py-10 text-center text-xs text-slate-400 font-medium">No recent leads found.</p>
+              <p className="py-8 text-center text-xs text-slate-400">No recent leads found.</p>
             ) : (
               sortedRecentLeads.map((lead) => (
-                <RecentLeadRow key={lead.id} name={lead.name} location={lead.location} source={lead.source} date={lead.date} />
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Today's & Overdue Follow-ups */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
-            <h2 className="text-sm font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-              <CalendarCheck className="h-4 w-4 text-amber-500" /> Follow-ups Action List
-            </h2>
-            <span className="rounded-full bg-red-50 border border-red-100 px-2.5 py-0.5 text-xs font-bold text-red-600">
-              {overdueFollowups.length} Overdue
-            </span>
-          </div>
-          <div className="space-y-3">
-            {activeFollowupsList.length === 0 ? (
-              <p className="py-10 text-center text-xs text-slate-400 font-medium">No follow-ups due or overdue.</p>
-            ) : (
-              activeFollowupsList.map((f) => (
-                <FollowupDueRow
-                  key={f.id}
-                  name={f.name}
-                  phone={f.phone}
-                  dueDate={f.nextDate}
-                  status={f.status}
-                  overdue={f.nextDate < todayStr}
+                <RecentLeadRow
+                  key={lead.id}
+                  name={lead.name}
+                  location={lead.location}
+                  source={lead.source || 'Walk-in'}
+                  date={lead.date}
                 />
               ))
             )}
           </div>
         </div>
 
+        {/* Follow-ups Action List */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <CalendarCheck className="h-4 w-4 text-amber-500" /> Follow-ups Action List
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">Leads needing call or showroom visit today</p>
+            </div>
+            {overdueFollowups.length > 0 && (
+              <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-[11px] font-bold text-red-700 border border-red-200">
+                {overdueFollowups.length} Overdue
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-2.5">
+            {activeFollowupsList.length === 0 ? (
+              <p className="py-8 text-center text-xs text-slate-400">No follow-ups due today. All caught up!</p>
+            ) : (
+              activeFollowupsList.map((lead) => (
+                <FollowupDueRow
+                  key={lead.id}
+                  name={lead.name}
+                  phone={lead.phone}
+                  dueDate={lead.nextDate}
+                  status={lead.status}
+                  overdue={lead.nextDate < todayStr}
+                />
+              ))
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
