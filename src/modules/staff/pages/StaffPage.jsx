@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
-  Users, UserPlus, Clock, Calendar, Search, Edit, Trash2,
-  CheckCircle2, X, Plus, UserCheck, Shield, Phone, Mail,
-  FileText, Activity, AlertCircle, Check, ListFilter, ClipboardList
+  Users, UserPlus, Search, Edit, Trash2, X, Shield, Phone, Mail,
+  MapPin, Send, Key, FileText, Fingerprint, MessageCircle, ClipboardList
 } from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
 
@@ -30,8 +29,14 @@ export function StaffPage() {
     id: '',
     name: '',
     role: 'Showroom Executive / Sales',
+    address: '',
     phone: '',
+    whatsapp: '',
+    telegram: '',
     email: '',
+    aadhaar: '',
+    username: '',
+    passcode: '',
     status: 'Active',
     workingHours: '09:00 AM - 07:00 PM',
     shiftHours: 10,
@@ -77,8 +82,14 @@ export function StaffPage() {
       id: `STF-${String(nextNum).padStart(3, '0')}`,
       name: '',
       role: 'Showroom Executive / Sales',
+      address: '',
       phone: '',
+      whatsapp: '',
+      telegram: '',
       email: '',
+      aadhaar: '',
+      username: `staff${String(nextNum).padStart(2, '0')}`,
+      passcode: '1234',
       status: 'Active',
       workingHours: '09:00 AM - 07:00 PM',
       shiftHours: 10,
@@ -94,8 +105,14 @@ export function StaffPage() {
       id: member.id,
       name: member.name || '',
       role: member.role || 'Showroom Executive / Sales',
+      address: member.address || '',
       phone: member.phone || '',
+      whatsapp: member.whatsapp || '',
+      telegram: member.telegram || '',
       email: member.email || '',
+      aadhaar: member.aadhaar || '',
+      username: member.username || '',
+      passcode: member.passcode || '',
       status: member.status || 'Active',
       workingHours: member.workingHours || '09:00 AM - 07:00 PM',
       shiftHours: member.shiftHours || 10,
@@ -198,7 +215,7 @@ export function StaffPage() {
     return (
       s.name?.toLowerCase().includes(term) ||
       s.id?.toLowerCase().includes(term) ||
-      s.role?.toLowerCase().includes(term) ||
+      s.username?.toLowerCase().includes(term) ||
       s.phone?.includes(term)
     )
   })
@@ -217,7 +234,6 @@ export function StaffPage() {
       })
     }
   })
-  // Sort logs by date descending
   allLogs.sort((a, b) => new Date(b.date) - new Date(a.date))
 
   // Filter Logs
@@ -234,18 +250,16 @@ export function StaffPage() {
 
   // KPI Calculations
   const activeCount = staff.filter(s => s.status === 'Active').length
-  const onLeaveCount = staff.filter(s => s.status === 'On Leave').length
-  const avgShiftHours = staff.length > 0
-    ? (staff.reduce((sum, s) => sum + (parseFloat(s.shiftHours) || 0), 0) / staff.length).toFixed(1)
-    : 0
+  const whatsappApisCount = staff.filter(s => s.whatsapp).length
+  const telegramApisCount = staff.filter(s => s.telegram).length
 
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Staff Records & Working Hours</h1>
-          <p className="text-sm text-slate-500">Manage employee profiles, shift working schedules, and attendance log sheets</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Staff Registry & Profiles</h1>
+          <p className="text-sm text-slate-500">Manage employee personal records, API integrations, usernames, and passcode credentials</p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
           {activeTab === 'profile' ? (
@@ -284,40 +298,40 @@ export function StaffPage() {
             </div>
           </div>
           <p className="mt-3 text-2xl font-black text-slate-900">{staff.length}</p>
-          <p className="mt-2 text-xs font-medium text-slate-400">Registered staff profiles</p>
+          <p className="mt-2 text-xs font-medium text-slate-400">Registered staff IDs</p>
         </div>
 
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active On-Duty</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Status</span>
             <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <UserCheck className="h-5 w-5" />
             </div>
           </div>
           <p className="mt-3 text-2xl font-black text-slate-900">{activeCount}</p>
-          <p className="mt-2 text-xs font-medium text-emerald-600 font-semibold">{onLeaveCount} Currently On Leave</p>
+          <p className="mt-2 text-xs font-medium text-slate-400">Active working members</p>
         </div>
 
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Avg Shift Hours</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">WhatsApp API Integrations</span>
             <div className="h-9 w-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <Clock className="h-5 w-5" />
+              <MessageCircle className="h-5 w-5" />
             </div>
           </div>
-          <p className="mt-3 text-2xl font-black text-slate-900">{avgShiftHours} <span className="text-sm font-semibold text-slate-400">hrs/day</span></p>
-          <p className="mt-2 text-xs font-medium text-slate-400">Standard showroom shifts</p>
+          <p className="mt-3 text-2xl font-black text-slate-900">{whatsappApisCount}</p>
+          <p className="mt-2 text-xs font-medium text-slate-400">Configured notification links</p>
         </div>
 
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Showroom Schedule</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Telegram API Connections</span>
             <div className="h-9 w-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Calendar className="h-5 w-5" />
+              <Send className="h-5 w-5" />
             </div>
           </div>
-          <p className="mt-3 text-2xl font-black text-slate-900">6 Days</p>
-          <p className="mt-2 text-xs font-medium text-slate-400">Mon - Sat Operations</p>
+          <p className="mt-3 text-2xl font-black text-slate-900">{telegramApisCount}</p>
+          <p className="mt-2 text-xs font-medium text-slate-400">Active Telegram bots/chats</p>
         </div>
       </div>
 
@@ -380,7 +394,7 @@ export function StaffPage() {
         ) : (
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-              <ListFilter className="h-3.5 w-3.5" /> Filter Staff:
+              <ClipboardList className="h-3.5 w-3.5" /> Filter Staff:
             </span>
             <select
               value={selectedStaffLogFilter}
@@ -434,36 +448,73 @@ export function StaffPage() {
                       </span>
                     </div>
 
-                    {/* Role & Contacts */}
+                    {/* Basic details */}
                     <div className="mt-4 space-y-2 text-xs">
-                      <div className="flex items-center gap-2 text-slate-700 font-semibold bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
-                        <Shield className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
-                        <span className="truncate">{member.role}</span>
+                      {member.role && (
+                        <div className="flex items-center gap-2 text-slate-700 font-semibold bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                          <Shield className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                          <span className="truncate">{member.role}</span>
+                        </div>
+                      )}
+
+                      {member.address && (
+                        <div className="flex items-start gap-1.5 text-slate-500 px-1 py-1">
+                          <MapPin className="h-3.5 w-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+                          <span className="leading-relaxed line-clamp-2">{member.address}</span>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-50">
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mobile Num</span>
+                          <span className="font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
+                            <Phone className="h-3 w-3 text-slate-400" /> {member.phone || '—'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email ID</span>
+                          <span className="font-semibold text-slate-700 flex items-center gap-1 mt-0.5 truncate">
+                            <Mail className="h-3 w-3 text-slate-400" /> {member.email || '—'}
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-slate-500 px-1 pt-1">
-                        <span className="flex items-center gap-1.5 font-medium">
-                          <Phone className="h-3.5 w-3.5 text-slate-400" /> {member.phone || '—'}
-                        </span>
-                        <span className="flex items-center gap-1.5 font-medium">
-                          <Mail className="h-3.5 w-3.5 text-slate-400" /> {member.email || '—'}
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aadhaar ID</span>
+                          <span className="font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
+                            <Fingerprint className="h-3 w-3 text-slate-400" /> {member.aadhaar || '—'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">WhatsApp API</span>
+                          <span className="font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
+                            <MessageCircle className="h-3 w-3 text-slate-400" /> {member.whatsapp || '—'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2">
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Telegram API (Chat ID)</span>
+                        <span className="font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
+                          <Send className="h-3 w-3 text-slate-400" /> {member.telegram || '—'}
                         </span>
                       </div>
                     </div>
 
-                    {/* Schedule */}
+                    {/* Credentials Info block */}
                     <div className="mt-4 rounded-xl bg-slate-900 text-white p-3.5 space-y-2">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-slate-400 flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5 text-blue-400" /> Shift Hours:
+                          <Users className="h-3.5 w-3.5 text-blue-400" /> Unique Username:
                         </span>
-                        <span className="font-bold text-white">{member.workingHours}</span>
+                        <span className="font-bold text-white font-mono">{member.username || '—'}</span>
                       </div>
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-slate-400 flex items-center gap-1">
-                          <Calendar className="h-3.5 w-3.5 text-emerald-400" /> Weekly Days:
+                          <Key className="h-3.5 w-3.5 text-emerald-400" /> Passcode (PIN):
                         </span>
-                        <span className="font-bold text-white">{member.workingDays}</span>
+                        <span className="font-bold text-white font-mono">{member.passcode || '—'}</span>
                       </div>
                     </div>
                   </div>
@@ -512,7 +563,7 @@ export function StaffPage() {
                   <tr>
                     <th className="px-5 py-3.5">Date</th>
                     <th className="px-5 py-3.5">Staff Member</th>
-                    <th className="px-5 py-3.5">Role</th>
+                    <th className="px-5 py-3.5">Designation</th>
                     <th className="px-5 py-3.5">Timing</th>
                     <th className="px-5 py-3.5 text-center">Hours Worked</th>
                     <th className="px-5 py-3.5 text-center">Status</th>
@@ -587,7 +638,7 @@ export function StaffPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveStaff} className="p-6 space-y-4">
+            <form onSubmit={handleSaveStaff} className="p-6 space-y-4 overflow-y-auto max-h-[75vh]">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Staff ID</label>
@@ -614,36 +665,48 @@ export function StaffPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Full Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Ramesh Kumar"
-                  value={staffForm.name}
-                  onChange={e => setStaffForm({ ...staffForm, name: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm outline-none transition focus:border-blue-500"
-                  required
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Ramesh Kumar"
+                    value={staffForm.name}
+                    onChange={e => setStaffForm({ ...staffForm, name: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm outline-none transition focus:border-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Role / Designation</label>
+                  <select
+                    value={staffForm.role}
+                    onChange={e => setStaffForm({ ...staffForm, role: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm outline-none transition focus:border-blue-500"
+                  >
+                    <option value="Showroom Executive / Sales">Showroom Executive / Sales</option>
+                    <option value="Inventory & Stock Manager">Inventory & Stock Manager</option>
+                    <option value="Billing & Accounts Executive">Billing & Accounts Executive</option>
+                    <option value="Delivery Driver & Logistics">Delivery Driver & Logistics</option>
+                    <option value="Showroom Manager">Showroom Manager</option>
+                  </select>
+                </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Role / Designation</label>
-                <select
-                  value={staffForm.role}
-                  onChange={e => setStaffForm({ ...staffForm, role: e.target.value })}
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Resident Address</label>
+                <textarea
+                  placeholder="Enter full residential address..."
+                  rows="2"
+                  value={staffForm.address}
+                  onChange={e => setStaffForm({ ...staffForm, address: e.target.value })}
                   className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm outline-none transition focus:border-blue-500"
-                >
-                  <option value="Showroom Executive / Sales">Showroom Executive / Sales</option>
-                  <option value="Inventory & Stock Manager">Inventory & Stock Manager</option>
-                  <option value="Billing & Accounts Executive">Billing & Accounts Executive</option>
-                  <option value="Delivery Driver & Logistics">Delivery Driver & Logistics</option>
-                  <option value="Showroom Manager">Showroom Manager</option>
-                </select>
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Phone Number</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Mobile Number</label>
                   <input
                     type="text"
                     placeholder="9876543210"
@@ -654,7 +717,7 @@ export function StaffPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Email</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Email ID</label>
                   <input
                     type="email"
                     placeholder="ramesh@tilescrm.com"
@@ -665,25 +728,59 @@ export function StaffPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Working Shift Hours</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">WhatsApp API</label>
                   <input
                     type="text"
-                    placeholder="e.g. 09:00 AM - 07:00 PM"
-                    value={staffForm.workingHours}
-                    onChange={e => setStaffForm({ ...staffForm, workingHours: e.target.value })}
+                    placeholder="WhatsApp phone / api URL"
+                    value={staffForm.whatsapp}
+                    onChange={e => setStaffForm({ ...staffForm, whatsapp: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm outline-none transition focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Telegram API (Chat ID)</label>
+                  <input
+                    type="text"
+                    placeholder="Telegram chat ID"
+                    value={staffForm.telegram}
+                    onChange={e => setStaffForm({ ...staffForm, telegram: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm outline-none transition focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Aadhaar Card ID</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 5489 1245 7856"
+                  value={staffForm.aadhaar}
+                  onChange={e => setStaffForm({ ...staffForm, aadhaar: e.target.value })}
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm outline-none transition focus:border-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-1">Unique Username</label>
+                  <input
+                    type="text"
+                    placeholder="username"
+                    value={staffForm.username}
+                    onChange={e => setStaffForm({ ...staffForm, username: e.target.value })}
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-800"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Working Days</label>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-1">Passcode (PIN)</label>
                   <input
                     type="text"
-                    placeholder="e.g. 6 Days (Mon - Sat)"
-                    value={staffForm.workingDays}
-                    onChange={e => setStaffForm({ ...staffForm, workingDays: e.target.value })}
+                    placeholder="passcode"
+                    value={staffForm.passcode}
+                    onChange={e => setStaffForm({ ...staffForm, passcode: e.target.value })}
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-800"
                     required
                   />

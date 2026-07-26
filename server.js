@@ -80,8 +80,14 @@ const INITIAL_STAFF = [
     id: 'STF-001',
     name: 'Ramesh Kumar',
     role: 'Showroom Executive / Sales',
+    address: '123, Cross Cut Road, Gandhipuram, Coimbatore - 641012',
     phone: '9876543210',
+    whatsapp: '9876543210',
+    telegram: '654789321',
     email: 'ramesh@tilescrm.com',
+    aadhaar: '5489 1245 7856',
+    username: 'ramesh01',
+    passcode: '1234',
     status: 'Active',
     workingHours: '09:00 AM - 07:00 PM',
     shiftHours: 10,
@@ -96,8 +102,14 @@ const INITIAL_STAFF = [
     id: 'STF-002',
     name: 'Siva Subramaniam',
     role: 'Inventory & Stock Manager',
+    address: '45, Peelamedu Pudur, Coimbatore - 641004',
     phone: '9845612307',
+    whatsapp: '9845612307',
+    telegram: '987654321',
     email: 'siva@tilescrm.com',
+    aadhaar: '3214 5698 7412',
+    username: 'siva02',
+    passcode: '5678',
     status: 'Active',
     workingHours: '08:30 AM - 06:30 PM',
     shiftHours: 10,
@@ -105,21 +117,6 @@ const INITIAL_STAFF = [
     joinDate: '2025-03-01',
     attendance: [
       { date: '2026-07-25', checkIn: '08:30 AM', checkOut: '06:30 PM', totalHours: 10, status: 'Present', notes: 'Unloaded 2 KAG trucks' }
-    ]
-  },
-  {
-    id: 'STF-003',
-    name: 'Priya Dharshini',
-    role: 'Billing & Accounts Executive',
-    phone: '9003344556',
-    email: 'priya@tilescrm.com',
-    status: 'Active',
-    workingHours: '09:30 AM - 06:30 PM',
-    shiftHours: 9,
-    workingDays: '6 Days (Mon - Sat)',
-    joinDate: '2025-05-10',
-    attendance: [
-      { date: '2026-07-25', checkIn: '09:30 AM', checkOut: '06:30 PM', totalHours: 9, status: 'Present', notes: 'Generated 14 invoices' }
     ]
   }
 ]
