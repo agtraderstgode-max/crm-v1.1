@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import {
   Users, UserPlus, Search, Edit, Trash2, X, Shield, Phone, Mail,
-  MapPin, Send, Key, FileText, Fingerprint, MessageCircle, ClipboardList
+  MapPin, Send, Key, FileText, Fingerprint, MessageCircle, ClipboardList,
+  UserCheck, Clock, Calendar
 } from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
 
