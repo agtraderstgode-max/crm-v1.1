@@ -40,6 +40,7 @@ const STAFF_FILE = path.join(DATA_DIR, 'staff.json')
 const CHAT_FILE = path.join(DATA_DIR, 'chat.json')
 const RETURNS_FILE = path.join(DATA_DIR, 'returns.json')
 const REFERRALS_FILE = path.join(DATA_DIR, 'referrals.json')
+const QUEUE_FILE = path.join(DATA_DIR, 'sync_queue.json')
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR)
 
@@ -51,6 +52,9 @@ if (!fs.existsSync(RETURNS_FILE)) {
 }
 if (!fs.existsSync(REFERRALS_FILE)) {
   fs.writeFileSync(REFERRALS_FILE, JSON.stringify([], null, 2), 'utf-8')
+}
+if (!fs.existsSync(QUEUE_FILE)) {
+  fs.writeFileSync(QUEUE_FILE, JSON.stringify([], null, 2), 'utf-8')
 }
 
 // ─── Supabase Client ─────────────────────────────────────────────────────────
@@ -266,26 +270,75 @@ const mapFromPostgres = (lead) => ({
   history: lead.history || []
 })
 
-// ─── Background Supabase Sync (fire-and-forget) ───────────────────────────────
-// Dev mode: API already responded to client. Supabase gets updated quietly.
-const syncUpsertToSupabase = (lead) => {
-  if (!supabase) return
-  // Try with history first; if that column doesn't exist yet, retry without it
-  supabase.from('leads').upsert([mapToPostgres(lead, true)])
-    .then(({ error }) => {
-      if (error && error.message.includes('history')) {
-        // history column not yet added in Supabase — retry without it
-        return supabase.from('leads').upsert([mapToPostgres(lead, false)])
-          .then(({ error: e2 }) => {
-            if (e2) console.warn(`⚠️  BG sync (no-history) failed for ${lead.id}:`, e2.message)
-            else console.log(`☁️  BG synced ${lead.id} → Supabase (without history — add history column to enable)`)
-          })
-      }
-      if (error) console.warn(`⚠️  BG sync failed for ${lead.id}:`, error.message)
-      else console.log(`☁️  BG synced ${lead.id} → Supabase`)
-    })
-    .catch(err => console.warn('⚠️  BG sync exception:', err.message))
+// ─── Offline-First Auto-Sync Engine ──────────────────────────────────────────
+const getSyncQueue = () => {
+  try { return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf-8')) } catch { return [] }
 }
+const saveSyncQueue = (q) => {
+  fs.writeFileSync(QUEUE_FILE, JSON.stringify(q, null, 2), 'utf-8')
+}
+
+// Low-level sync executor
+const syncRecordToSupabase = async (table, action, record) => {
+  if (!supabase) return
+  if (action === 'delete') {
+    const { error } = await supabase.from(table).delete().eq('id', record.id)
+    if (error) throw error
+    return
+  }
+  // Upsert
+  let row = record
+  if (table === 'leads') {
+    row = mapToPostgres(record, true)
+  }
+  const { error } = await supabase.from(table).upsert([row])
+  if (error) throw error
+}
+
+// Enqueue or execute sync: tries immediate sync; on network/server error, queues for auto-retry
+const enqueueSync = (table, action, record) => {
+  if (!supabase) return
+  syncRecordToSupabase(table, action, record)
+    .then(() => {
+      console.log(`☁️  Synced ${table} ${record.id || ''} → Supabase`)
+    })
+    .catch((err) => {
+      console.warn(`⚠️  Offline / Network failure (${err.message}). Queued ${table} ${record.id || ''} for auto-sync.`);
+      const q = getSyncQueue()
+      q.push({ table, action, record, timestamp: Date.now() })
+      saveSyncQueue(q)
+    })
+}
+
+// Background queue processor (auto-syncs whenever connection is restored)
+const processSyncQueue = async () => {
+  if (!supabase) return
+  const q = getSyncQueue()
+  if (q.length === 0) return
+
+  const remaining = []
+  let syncedCount = 0
+
+  for (let i = 0; i < q.length; i++) {
+    const item = q[i]
+    try {
+      await syncRecordToSupabase(item.table, item.action, item.record)
+      syncedCount++
+    } catch (err) {
+      // Still offline or failed, retain rest of queue for next attempt
+      remaining.push(...q.slice(i))
+      break
+    }
+  }
+
+  saveSyncQueue(remaining)
+  if (syncedCount > 0) {
+    console.log(`☁️  [Auto-Sync] Connection restored! Synced ${syncedCount} queued offline records to Supabase. (${remaining.length} pending)`)
+  }
+}
+
+// Check and flush offline queue every 20 seconds
+setInterval(processSyncQueue, 20000)
 
 // Pull latest Supabase data on startup to refresh local cache
 const refreshLocalFromCloud = async () => {
@@ -296,6 +349,8 @@ const refreshLocalFromCloud = async () => {
     const mapped = data.map(mapFromPostgres)
     saveLocalLeads(mapped)
     console.log(`☁️  Local cache refreshed from Supabase (${mapped.length} leads)`)
+    // Also process any pending offline queue items
+    processSyncQueue()
   } catch (err) {
     console.warn('⚠️  Startup cloud refresh exception:', err.message)
   }
@@ -341,8 +396,8 @@ app.post('/api/leads', async (req, res) => {
   res.status(201).json(newLead)
   console.log(`⚡ Saved ${newLead.id} locally`)
 
-  // ☁️ Background sync to Supabase
-  syncUpsertToSupabase(newLead)
+  // ☁️ Offline-safe sync to Supabase
+  enqueueSync('leads', 'upsert', newLead)
 })
 
 // ─── PUT /api/leads/:id ────────────────────────────────────────────────────────
@@ -359,8 +414,8 @@ app.put('/api/leads/:id', async (req, res) => {
   res.json(updatedLead)
   console.log(`⚡ Updated ${id} locally`)
 
-  // ☁️ Background sync to Supabase
-  syncUpsertToSupabase(updatedLead)
+  // ☁️ Offline-safe sync to Supabase
+  enqueueSync('leads', 'upsert', updatedLead)
 })
 
 // ─── DELETE /api/leads/:id ─────────────────────────────────────────────────────
@@ -373,13 +428,8 @@ app.delete('/api/leads/:id', async (req, res) => {
   res.json({ success: true, id })
   console.log(`⚡ Deleted ${id} locally`)
 
-  // ☁️ Background sync to Supabase
-  supabase.from('leads').delete().eq('id', id)
-    .then(({ error }) => {
-      if (error) console.warn(`⚠️  BG delete failed for ${id}:`, error.message)
-      else console.log(`☁️  BG deleted ${id} from Supabase`)
-    })
-    .catch(err => console.warn('⚠️  BG delete exception:', err.message))
+  // ☁️ Offline-safe sync to Supabase
+  enqueueSync('leads', 'delete', { id })
 })
 
 // ─── GET /api/orders ───────────────────────────────────────────────────────────
@@ -404,6 +454,7 @@ app.post('/api/orders', (req, res) => {
   saveLocalOrders(localOrders)
   res.status(201).json(newOrder)
   console.log(`⚡ Saved order ${newOrder.id} locally`)
+  enqueueSync('orders', 'upsert', newOrder)
 })
 
 // ─── PUT /api/orders/:id ────────────────────────────────────────────────────────
@@ -420,6 +471,7 @@ app.put('/api/orders/:id', (req, res) => {
   saveLocalOrders(localOrders)
   res.json(updatedOrder)
   console.log(`⚡ Updated order ${id} locally`)
+  enqueueSync('orders', 'upsert', updatedOrder)
 })
 
 // ─── GET /api/customers ──────────────────────────────────────────────────────────
@@ -444,6 +496,7 @@ app.post('/api/customers', (req, res) => {
   saveLocalCustomers(localCustomers)
   res.status(201).json(newCustomer)
   console.log(`⚡ Saved customer ${newCustomer.id} locally`)
+  enqueueSync('customers', 'upsert', newCustomer)
 })
 
 // ─── PUT /api/customers/:id ───────────────────────────────────────────────────────
@@ -460,6 +513,7 @@ app.put('/api/customers/:id', (req, res) => {
   saveLocalCustomers(localCustomers)
   res.json(updatedCustomer)
   console.log(`⚡ Updated customer ${id} locally`)
+  enqueueSync('customers', 'upsert', updatedCustomer)
 })
 
 // ─── DELETE /api/customers/:id ──────────────────────────────────────────────────
@@ -469,6 +523,7 @@ app.delete('/api/customers/:id', (req, res) => {
   saveLocalCustomers(localCustomers.filter(c => c.id !== id))
   res.json({ success: true, id })
   console.log(`⚡ Deleted customer ${id} locally`)
+  enqueueSync('customers', 'delete', { id })
 })
 
 // ─── GET /api/products ───────────────────────────────────────────────────────────
@@ -520,6 +575,7 @@ app.post('/api/products', (req, res) => {
   saveLocalProducts(localProducts)
   res.status(201).json(newProduct)
   console.log(`⚡ Saved product ${newProduct.id} locally`)
+  enqueueSync('products', 'upsert', newProduct)
 })
 
 // ─── PUT /api/products/:id ───────────────────────────────────────────────────────
@@ -536,6 +592,7 @@ app.put('/api/products/:id', (req, res) => {
   saveLocalProducts(localProducts)
   res.json(updatedProduct)
   console.log(`⚡ Updated product ${id} locally`)
+  enqueueSync('products', 'upsert', updatedProduct)
 })
 
 // ─── GET /api/categories ─────────────────────────────────────────────────────────
@@ -1517,6 +1574,7 @@ app.post('/api/returns', (req, res) => {
   returns.unshift(newReturn)
   saveLocalReturns(returns)
   res.status(201).json(newReturn)
+  enqueueSync('returns', 'upsert', newReturn)
 })
 
 app.delete('/api/returns/:id', (req, res) => {
@@ -1525,6 +1583,7 @@ app.delete('/api/returns/:id', (req, res) => {
   returns = returns.filter(r => r.id !== id)
   saveLocalReturns(returns)
   res.json({ success: true, message: `Return ${id} deleted` })
+  enqueueSync('returns', 'delete', { id })
 })
 
 // ─── Referral System Endpoints ────────────────────────────────────────────────
@@ -1572,6 +1631,7 @@ app.post('/api/referrals', (req, res) => {
   saveLocalReferrals(referrals)
   console.log(`⚡ Created referral partner ${newPartner.id} (${newPartner.name})`)
   res.status(201).json(newPartner)
+  enqueueSync('referrals', 'upsert', newPartner)
 })
 
 // PUT /api/referrals/:id (Update Referral Partner)
@@ -1584,6 +1644,7 @@ app.put('/api/referrals/:id', (req, res) => {
     referrals[idx] = { ...referrals[idx], ...updatedData }
     saveLocalReferrals(referrals)
     res.json(referrals[idx])
+    enqueueSync('referrals', 'upsert', referrals[idx])
   } else {
     res.status(404).json({ error: 'Referral partner not found' })
   }
@@ -1596,6 +1657,7 @@ app.delete('/api/referrals/:id', (req, res) => {
   referrals = referrals.filter(r => r.id !== id)
   saveLocalReferrals(referrals)
   res.json({ success: true, message: `Referral partner ${id} deleted` })
+  enqueueSync('referrals', 'delete', { id })
 })
 
 // POST /api/referrals/:id/orders (Link Referred Client Order)
@@ -1620,6 +1682,7 @@ app.post('/api/referrals/:id/orders', (req, res) => {
   saveLocalReferrals(referrals)
   console.log(`⚡ Linked referred order for ${partner.name}: ₹${newOrderEntry.commissionAmount} commission`)
   res.json({ success: true, partner, newOrderEntry })
+  enqueueSync('referrals', 'upsert', partner)
 })
 
 // POST /api/referrals/:id/payouts (Record Commission Payout)
@@ -1642,6 +1705,7 @@ app.post('/api/referrals/:id/payouts', (req, res) => {
   saveLocalReferrals(referrals)
   console.log(`⚡ Recorded payout of ₹${payoutEntry.amount} for ${partner.name}`)
   res.json({ success: true, partner, payoutEntry })
+  enqueueSync('referrals', 'upsert', partner)
 })
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
