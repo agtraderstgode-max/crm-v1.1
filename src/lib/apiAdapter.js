@@ -135,49 +135,74 @@ const mapCustomerToSupabase = (c) => ({
   date: c.date || null
 })
 
-const mapOrderFromSupabase = (o) => ({
-  id: o.id,
-  customer: o.customer,
-  phone: o.phone || '',
-  date: o.date || '',
-  items: o.items || 0,
-  total: o.total || '',
-  status: o.status || 'Processing',
-  delivery: o.delivery || '',
-  deliveryType: o.deliverytype || '',
-  transport: o.transport || '',
-  vehicleInfo: o.vehicleinfo || '',
-  handleBy: o.handleby || '',
-  confirmedAt: o.confirmedat || '',
-  dispatchedAt: o.dispatchedat || '',
-  deliveredAt: o.deliveredat || '',
-  splitPayments: o.splitpayments || [],
-  balanceMode: o.balancemode || '',
-  paymentNotes: o.paymentnotes || '',
-  itemsDetails: o.itemsdetails || []
-})
+const mapOrderFromSupabase = (o) => {
+  let cancelReason = o.cancelReason || ''
+  let paymentNotes = o.paymentnotes || ''
+  let cancelledAt = o.cancelledAt || ''
 
-const mapOrderToSupabase = (o) => ({
-  id: o.id,
-  customer: o.customer,
-  phone: o.phone || null,
-  date: o.date || null,
-  items: parseInt(o.items) || 0,
-  total: o.total || '',
-  status: o.status || 'Processing',
-  delivery: o.delivery || null,
-  deliverytype: o.deliveryType || null,
-  transport: o.transport || null,
-  vehicleinfo: o.vehicleInfo || null,
-  handleby: o.handleBy || null,
-  confirmedat: o.confirmedAt || null,
-  dispatchedat: o.dispatchedAt || null,
-  deliveredat: o.deliveredAt || null,
-  splitpayments: o.splitPayments || [],
-  balancemode: o.balanceMode || null,
-  paymentnotes: o.paymentNotes || null,
-  itemsdetails: o.itemsDetails || []
-})
+  if (paymentNotes.startsWith('[CANCELLED:')) {
+    const match = paymentNotes.match(/^\[CANCELLED:\s*(.*?)\](?:\s*\[AT:\s*(.*?)\])?\s*(.*)$/)
+    if (match) {
+      cancelReason = match[1] || cancelReason
+      cancelledAt = match[2] || cancelledAt
+      paymentNotes = match[3] || ''
+    }
+  }
+
+  return {
+    id: o.id,
+    customer: o.customer,
+    phone: o.phone || '',
+    date: o.date || '',
+    items: o.items || 0,
+    total: o.total || '',
+    status: o.status || 'Processing',
+    delivery: o.delivery || '',
+    deliveryType: o.deliverytype || '',
+    transport: o.transport || '',
+    vehicleInfo: o.vehicleinfo || '',
+    handleBy: o.handleby || '',
+    confirmedAt: o.confirmedat || '',
+    dispatchedAt: o.dispatchedat || '',
+    deliveredAt: o.deliveredat || '',
+    splitPayments: o.splitpayments || [],
+    balanceMode: o.balancemode || '',
+    paymentNotes,
+    cancelReason,
+    cancelledAt,
+    itemsDetails: o.itemsdetails || []
+  }
+}
+
+const mapOrderToSupabase = (o) => {
+  let notes = o.paymentNotes || o.paymentnotes || ''
+  if (o.status === 'Cancelled' && o.cancelReason) {
+    const at = o.cancelledAt || new Date().toISOString()
+    notes = `[CANCELLED: ${o.cancelReason}] [AT: ${at}] ${notes}`.trim()
+  }
+
+  return {
+    id: o.id,
+    customer: o.customer,
+    phone: o.phone || null,
+    date: o.date || null,
+    items: parseInt(o.items) || 0,
+    total: o.total || '',
+    status: o.status || 'Processing',
+    delivery: o.delivery || null,
+    deliverytype: o.deliveryType || o.deliverytype || null,
+    transport: o.transport || null,
+    vehicleinfo: o.vehicleInfo || o.vehicleinfo || null,
+    handleby: o.handleBy || o.handleby || null,
+    confirmedat: o.confirmedAt || o.confirmedat || null,
+    dispatchedat: o.dispatchedAt || o.dispatchedat || null,
+    deliveredat: o.deliveredAt || o.deliveredat || null,
+    splitpayments: o.splitPayments || o.splitpayments || [],
+    balancemode: o.balanceMode || o.balancemode || null,
+    paymentnotes: notes || null,
+    itemsdetails: o.itemsDetails || o.itemsdetails || []
+  }
+}
 
 const mapReturnFromSupabase = (r) => ({
   id: r.id,
