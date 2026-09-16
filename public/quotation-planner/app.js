@@ -10,6 +10,104 @@ let supabaseClient = null;
 let activeEstimateId = null;
 let allCloudEstimates = []; // cached list of saved estimates for searching
 
+// ─── Intercept fetch inside iframe to use window.parent or Supabase ─────────
+const originalIframeFetch = window.fetch;
+window.fetch = async function(input, init = {}) {
+  let url = typeof input === 'string' ? input : (input?.url || '');
+  if (url.startsWith('/api/')) {
+    // 1. If inside CRM iframe, use parent window's fetch (connected to Supabase)
+    try {
+      if (window.parent && window.parent !== window && typeof window.parent.fetch === 'function') {
+        return await window.parent.fetch(input, init);
+      }
+    } catch (e) {}
+
+    // 2. Direct Supabase fallback if standalone or parent fetch unavailable
+    if (supabaseClient) {
+      const method = (init.method || 'GET').toUpperCase();
+      let body = {};
+      try { if (init.body) body = JSON.parse(init.body); } catch(e) {}
+
+      if (url.startsWith('/api/orders') && method === 'POST') {
+        const { data: all } = await supabaseClient.from('orders').select('id');
+        const nums = (all || []).map(o => {
+          const match = o.id?.match(/^ORD-(\d+)$/i);
+          return match ? parseInt(match[1]) : 0;
+        });
+        const newOrder = {
+          ...body,
+          id: body.id || `ORD-${String(Math.max(...nums, 0) + 1).padStart(3, '0')}`
+        };
+        const row = {
+          id: newOrder.id,
+          customer: newOrder.customer,
+          phone: newOrder.phone || null,
+          date: newOrder.date || null,
+          items: parseInt(newOrder.items) || 0,
+          total: newOrder.total || '',
+          status: newOrder.status || 'Processing',
+          delivery: newOrder.delivery || null,
+          deliverytype: newOrder.deliveryType || null,
+          transport: newOrder.transport || null,
+          vehicleinfo: newOrder.vehicleInfo || null,
+          handleby: newOrder.handleBy || null,
+          confirmedat: newOrder.confirmedAt || null,
+          itemsdetails: newOrder.itemsDetails || []
+        };
+        const { error } = await supabaseClient.from('orders').insert([row]);
+        if (error) throw error;
+        return new Response(JSON.stringify(newOrder), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.startsWith('/api/customers') && method === 'POST') {
+        const { data: all } = await supabaseClient.from('customers').select('id');
+        const nums = (all || []).map(c => {
+          const match = c.id?.match(/^C-(\d+)$/i);
+          return match ? parseInt(match[1]) : 0;
+        });
+        const newCust = {
+          ...body,
+          id: body.id || `C-${String(Math.max(...nums, 0) + 1).padStart(3, '0')}`
+        };
+        const row = {
+          id: newCust.id,
+          name: newCust.name,
+          phone: newCust.phone || null,
+          location: newCust.location || null,
+          custtype: newCust.custType || null,
+          expectedamt: newCust.expectedAmt || null,
+          attendedby: newCust.attendedBy || null,
+          remarks: newCust.remarks || null,
+          source: newCust.source || null,
+          date: newCust.date || null
+        };
+        const { error } = await supabaseClient.from('customers').insert([row]);
+        if (error) throw error;
+        return new Response(JSON.stringify(newCust), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.startsWith('/api/leads') && method === 'GET') {
+        const { data, error } = await supabaseClient.from('leads').select('*').order('date', { ascending: false });
+        if (error) throw error;
+        return new Response(JSON.stringify(data || []), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.startsWith('/api/customers') && method === 'GET') {
+        const { data, error } = await supabaseClient.from('customers').select('*').order('date', { ascending: false });
+        if (error) throw error;
+        return new Response(JSON.stringify(data || []), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (url.startsWith('/api/products') && method === 'GET') {
+        const { data, error } = await supabaseClient.from('products').select('*');
+        if (error) throw error;
+        return new Response(JSON.stringify(data || []), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+  }
+  return originalIframeFetch(input, init);
+};
+
 function initSupabase() {
   let url = localStorage.getItem("supabase_url");
   let key = localStorage.getItem("supabase_anon_key");
