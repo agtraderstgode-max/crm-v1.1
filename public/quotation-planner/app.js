@@ -3,16 +3,24 @@
    ====================================================== */
 
 // ─── Supabase Cloud Sync Configuration ──────────────────────────
-const DEFAULT_SUPABASE_URL = "https://tnpghgqgavcfukjjmnwk.supabase.co";
-const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRucGdoZ3FnYXZjZnVramptbndrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDAzMTksImV4cCI6MjA5NzgxNjMxOX0.-QoBvaLT1rm7X4tEYuodin2PrtpUWaBzb04s64wzu3k";
+const DEFAULT_SUPABASE_URL = "https://fyycsuprnwpacbsiyzrt.supabase.co";
+const DEFAULT_SUPABASE_KEY = "sb_publishable_9YNgEYYtwKsklAorPWj-xA_z7mUS_kk";
 
 let supabaseClient = null;
 let activeEstimateId = null;
 let allCloudEstimates = []; // cached list of saved estimates for searching
 
 function initSupabase() {
-  const url = localStorage.getItem("supabase_url") || DEFAULT_SUPABASE_URL;
-  const key = localStorage.getItem("supabase_anon_key") || DEFAULT_SUPABASE_KEY;
+  let url = localStorage.getItem("supabase_url");
+  let key = localStorage.getItem("supabase_anon_key");
+  
+  // Auto-migrate from old external Supabase to CRM's Supabase
+  if (!url || url.includes("tnpghgqgavcfukjjmnwk") || !key) {
+    url = DEFAULT_SUPABASE_URL;
+    key = DEFAULT_SUPABASE_KEY;
+    localStorage.setItem("supabase_url", url);
+    localStorage.setItem("supabase_anon_key", key);
+  }
 
   if (typeof supabase !== "undefined" && url && key) {
     try {
