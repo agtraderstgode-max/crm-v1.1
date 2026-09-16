@@ -2671,7 +2671,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-function confirmOrder() {
+async function confirmOrder() {
   if (typeof quotationItems === 'undefined' || quotationItems.length === 0) {
     alert('No items in quotation to confirm order!');
     return;
@@ -2680,141 +2680,117 @@ function confirmOrder() {
   // Auto-save quotation data to Supabase silently
   savePlanToCloudSilent();
   
-  const customerName = document.getElementById('quote-customer-name').value || 'Customer';
+  const customerName = document.getElementById('quote-customer-name')?.value?.trim() || document.getElementById('customer-name')?.value?.trim() || 'Customer';
   const grandTotal = quotationItems.reduce((sum, item) => sum + item.amount, 0);
   const totalItems = quotationItems.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
 
-  const customerPhone = document.getElementById('customer-phone')?.value || '';
-  const customerLoc = document.getElementById('quote-customer-location')?.value || '';
+  const customerPhone = document.getElementById('customer-phone')?.value?.trim() || '';
+  const customerLoc = document.getElementById('quote-customer-location')?.value?.trim() || document.getElementById('quote-location')?.value?.trim() || '';
+  const quoteBy = document.getElementById('quote-by')?.value?.trim() || 'Sales';
+  const orderDate = new Date().toISOString().split('T')[0];
+  const totalFormatted = '₹' + Math.round(grandTotal).toLocaleString('en-IN');
 
-  const orderData = {
-    customer: customerName,
-    phone: customerPhone,
-    location: customerLoc,
-    date: new Date().toISOString().split('T')[0],
-    items: Math.round(totalItems),
-    total: '₹' + Math.round(grandTotal).toLocaleString('en-IN'),
-    status: 'Processing',
-    delivery: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
-    itemsList: quotationItems.map(item => ({
-      description: item.description,
-      quantity: item.quantity,
-      unit: item.unit,
-      rate: item.rate,
-      amount: item.amount
-    }))
-  };
+  const orderBtn = document.querySelector('.btn-order-confirm');
+  const origBtnText = orderBtn ? orderBtn.innerHTML : '';
+  if (orderBtn) {
+    orderBtn.disabled = true;
+    orderBtn.innerHTML = "Saving Order...";
+  }
 
-  // 1. Save to Sales Orders backend
-  fetch('/api/orders', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(orderData)
-  })
-  .then(res => res.json())
-  .then(savedOrder => {
-    // 2. If a lead/customer is selected in CRM dropdown
-    const leadSelect = document.getElementById('crm-lead-select');
-    if (leadSelect && leadSelect.value) {
-      const parts = leadSelect.value.split(':');
-      const type = parts[0];
-      const selectedId = parts[1];
+  try {
+    let nextOrdId = 'ORD-001';
 
-      if (type === 'LEAD') {
-        // Fetch lead details first
-        fetch(`/api/leads`)
-          .then(r => r.json())
-          .then(leads => {
-            const lead = leads.find(l => l.id === selectedId);
-            if (lead) {
-              const customerData = {
-                name: lead.name,
-                phone: lead.phone,
-                custType: lead.custType || 'Owner',
-                location: lead.location || '',
-                lat: lead.lat || '',
-                lng: lead.lng || '',
-                km: lead.km || '',
-                source: lead.source || '',
-                size: lead.size || '',
-                houseType: lead.houseType || '',
-                stage: lead.stage || '',
-                budget: lead.budget || '',
-                expectedAmt: orderData.total,
-                remarks: lead.remarks || '',
-                attendedBy: lead.attendedBy || '',
-                date: new Date().toISOString().split('T')[0]
-              };
-              return fetch('/api/customers', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(customerData)
-              });
-            }
-          })
-          .then(() => {
-            alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}\nAdded to Customers Master.`);
-          })
-          .catch(err => {
-            console.error("Error adding customer:", err);
-            alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}`);
-          });
-      } else if (type === 'CUST') {
-        // Customer already exists, update their total value
-        fetch(`/api/customers`)
-          .then(r => r.json())
-          .then(customers => {
-            const customer = customers.find(c => c.id === selectedId);
-            if (customer) {
-              customer.expectedAmt = orderData.total;
-              return fetch(`/api/customers/${selectedId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(customer)
-              });
-            }
-          })
-          .then(() => {
-            alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}\nAdded to Customers Master.`);
-          })
-          .catch(err => {
-            console.error("Error updating customer value:", err);
-            alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}`);
-          });
+    // Query Supabase for next order number
+    if (supabaseClient) {
+      const { data: allOrders } = await supabaseClient.from('orders').select('id');
+      const nums = (allOrders || []).map(o => {
+        const match = o.id?.match(/^ORD-(\d+)$/i);
+        return match ? parseInt(match[1]) : 0;
+      });
+      nextOrdId = `ORD-${String(Math.max(...nums, 0) + 1).padStart(3, '0')}`;
+    }
+
+    const orderRow = {
+      id: nextOrdId,
+      customer: customerName,
+      phone: customerPhone || null,
+      date: orderDate,
+      items: Math.round(totalItems),
+      total: totalFormatted,
+      status: 'Processing',
+      delivery: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
+      deliverytype: 'Direct Dispatch',
+      transport: 'Own Vehicle',
+      vehicleinfo: '',
+      handleby: quoteBy,
+      confirmedat: new Date().toISOString(),
+      splitpayments: [],
+      balancemode: 'Cash',
+      paymentnotes: '',
+      itemsdetails: quotationItems.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        rate: item.rate,
+        amount: item.amount
+      }))
+    };
+
+    // 1. Save order directly to Supabase
+    if (supabaseClient) {
+      const { error: ordErr } = await supabaseClient.from('orders').insert([orderRow]);
+      if (ordErr) {
+        console.error("Supabase Order Insert Error:", ordErr);
+        throw new Error(ordErr.message);
+      }
+
+      // 2. Save or update customer
+      const leadSelect = document.getElementById('crm-lead-select');
+      const leadVal = leadSelect ? leadSelect.value : '';
+      if (leadVal.startsWith('CUST:')) {
+        const custId = leadVal.split(':')[1];
+        await supabaseClient.from('customers').update({ expectedamt: totalFormatted }).eq('id', custId);
+      } else {
+        const { data: allCusts } = await supabaseClient.from('customers').select('id');
+        const cNums = (allCusts || []).map(c => {
+          const match = c.id?.match(/^C-(\d+)$/i);
+          return match ? parseInt(match[1]) : 0;
+        });
+        const nextCustId = `C-${String(Math.max(...cNums, 0) + 1).padStart(3, '0')}`;
+        await supabaseClient.from('customers').insert([{
+          id: nextCustId,
+          name: customerName,
+          phone: customerPhone || null,
+          custtype: 'Owner',
+          location: customerLoc || null,
+          source: 'Walk In',
+          expectedamt: totalFormatted,
+          remarks: 'Order confirmed from Quotation',
+          date: orderDate
+        }]);
       }
     } else {
-      // Manual Customer — also auto-add to Customers Master list!
-      const customerData = {
-        name: customerName,
-        phone: customerPhone,
-        custType: 'Owner', // default
-        location: customerLoc,
-        lat: '', lng: '', km: '',
-        source: 'Walk In', // default
-        size: '', houseType: '', stage: '', budget: '',
-        expectedAmt: orderData.total,
-        remarks: 'Order confirmed from Quotation',
-        attendedBy: '',
-        date: new Date().toISOString().split('T')[0]
-      };
-      
-      fetch('/api/customers', {
+      // Fallback
+      await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(customerData)
-      })
-      .then(() => {
-        alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}\nAdded to Customers Master.`);
-      })
-      .catch(err => {
-        console.error("Error adding customer manually:", err);
-        alert(`🎉 Order Confirmed!\nOrder No: ${savedOrder.id}\nCustomer: ${customerName}`);
+        body: JSON.stringify(orderRow)
       });
     }
-  })
-  .catch(err => {
+
+    if (orderBtn) {
+      orderBtn.disabled = false;
+      orderBtn.innerHTML = origBtnText;
+    }
+
+    alert(`🎉 Order Confirmed!\nOrder No: ${nextOrdId}\nCustomer: ${customerName}\nAdded to Orders & Customers Master.`);
+  } catch (err) {
+    if (orderBtn) {
+      orderBtn.disabled = false;
+      orderBtn.innerHTML = origBtnText;
+    }
     console.error("Error confirming order:", err);
-    alert("Failed to confirm order. Please check backend connection.");
-  });
+    alert("Failed to confirm order: " + (err.message || 'Please check connection.'));
+  }
 }
 
