@@ -8,8 +8,17 @@ import { createClient } from '@supabase/supabase-js'
 import multer from 'multer'
 import { GoogleGenAI } from '@google/genai'
 
+// Load .env file if present
+try {
+  if (typeof process.loadEnvFile === 'function' && fs.existsSync('.env')) {
+    process.loadEnvFile('.env')
+  }
+} catch (err) {
+  // Ignore .env load error
+}
+
 const app = express()
-const PORT = 5001
+const PORT = process.env.PORT || 5001
 
 // ─── Mode Switch ──────────────────────────────────────────────────────────────
 // Development: USE_CLOUD=false → instant local reads, background Supabase sync
@@ -28,40 +37,45 @@ const INVOICES_FILE = path.join(DATA_DIR, 'invoices.json')
 const CATEGORIES_FILE = path.join(DATA_DIR, 'categories.json')
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json')
 const STAFF_FILE = path.join(DATA_DIR, 'staff.json')
+const CHAT_FILE = path.join(DATA_DIR, 'chat.json')
+const RETURNS_FILE = path.join(DATA_DIR, 'returns.json')
+const REFERRALS_FILE = path.join(DATA_DIR, 'referrals.json')
 
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR)
+
+if (!fs.existsSync(CHAT_FILE)) {
+  fs.writeFileSync(CHAT_FILE, JSON.stringify([], null, 2), 'utf-8')
+}
+if (!fs.existsSync(RETURNS_FILE)) {
+  fs.writeFileSync(RETURNS_FILE, JSON.stringify([], null, 2), 'utf-8')
+}
+if (!fs.existsSync(REFERRALS_FILE)) {
+  fs.writeFileSync(REFERRALS_FILE, JSON.stringify([], null, 2), 'utf-8')
+}
 
 // ─── Supabase Client ─────────────────────────────────────────────────────────
-const SUPABASE_URL = 'https://emiwizejpibhvdoylbmb.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtaXdpemVqcGliaHZkb3lsYm1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwNzMzNTIsImV4cCI6MjA5ODY0OTM1Mn0.St_S4-7vGvLgsc41DVCbtMA_HBTe-bSmka_-fjndTis'
+const SUPABASE_URL = process.env.SUPABASE_URL || ''
+const SUPABASE_KEY = process.env.SUPABASE_KEY || ''
+const isSupabaseConfigured = SUPABASE_URL && !SUPABASE_URL.includes('your-project') && !SUPABASE_URL.includes('emiwizejpibhvdoylbmb')
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+let supabase = null
+if (isSupabaseConfigured) {
+  try {
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+    console.log(`☁️  Supabase connected: ${SUPABASE_URL}`)
+  } catch (err) {
+    console.warn('⚠️  Supabase init failed:', err.message)
+  }
+} else {
+  console.log('ℹ️  Supabase not yet configured. Running in Local Mode. (Edit .env to connect Supabase)')
+}
 
 app.use(cors())
 app.use(express.json())
 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR)
-
-const INITIAL_LEADS = [
-  { id:'L001', date:'2026-07-03', name:'Aravind Kumar',        phone:'9876543210', location:'Gandhipuram',      lat:11.0172, lng:76.9561, km:0.5,  source:'Google',          size:'1500+', budget:'Medium', houseType:'New',        custType:'Owner',     stage:'Immediate',           priority:'High',   status:'New Entry',        nextDate:'2026-07-05', expectedAmt:'₹80,000',  remarks:'Wants premium wood finish tiles.' },
-  { id:'L002', date:'2026-07-02', name:'Suresh Constructions', phone:'9845612307', location:'Peelamedu',        lat:11.0300, lng:77.0200, km:6.2,  source:'Engineer',        size:'2500+', budget:'High',   houseType:'New',        custType:'Builder',   stage:'Flooring Stage',      priority:'High',   status:'Keep Tracking 2x', nextDate:'2026-07-04', expectedAmt:'₹3,20,000', remarks:'Looking for imported marble.' },
-  { id:'L003', date:'2026-07-01', name:'Meena Rajan',          phone:'9003344556', location:'RS Puram',         lat:11.0140, lng:76.9420, km:1.2,  source:'Walk In',         size:'750+',  budget:'Low',    houseType:'Renovation', custType:'Owner',     stage:'Planning',            priority:'Low',    status:'Lost Customer',    nextDate:'',           expectedAmt:'₹30,000',  remarks:'Price too high. Went elsewhere.' },
-  { id:'L004', date:'2026-06-30', name:'Devi Architects',      phone:'9988776655', location:'Saravanampatti',   lat:11.0680, lng:77.0200, km:8.5,  source:'Social Media',    size:'2000+', budget:'High',   houseType:'New',        custType:'Architect', stage:'Construction Started', priority:'Medium', status:'Keep Tracking 3x', nextDate:'2026-07-06', expectedAmt:'₹2,10,000', remarks:'Interested in large format slabs.' },
-  { id:'L005', date:'2026-06-29', name:'Karthik Homes',        phone:'9444123456', location:'Thudiyalur',       lat:11.0800, lng:76.9700, km:7.2,  source:'Tv Ad',           size:'500+',  budget:'Low',    houseType:'Renovation', custType:'Owner',     stage:'Immediate',           priority:'Medium', status:'Customer Bought',  nextDate:'',           expectedAmt:'₹22,000',  remarks:'Bought bathroom tiles set.' },
-  { id:'L006', date:'2026-06-28', name:'Ibrahim Kutty',        phone:'9894002233', location:'Karumathampatti',  lat:11.0900, lng:77.1100, km:24.6, source:'Mestri',          size:'1000+', budget:'Low',    houseType:'New',        custType:'Owner',     stage:'Flooring Stage',      priority:'High',   status:'Keep Tracking 4x', nextDate:'2026-07-03', expectedAmt:'₹55,000',  remarks:'Mestri Ramu referred. Needs discount.' },
-]
-
-const INITIAL_ORDERS = [
-  { id:'ORD-001', customer:'Suresh Constructions', date:'2026-07-02', items:28, total:'₹4,80,000', status:'Processing', delivery:'2026-07-08' },
-  { id:'ORD-002', customer:'Karthik Builders',    date:'2026-07-01', items:15, total:'₹2,10,000', status:'Dispatched', delivery:'2026-07-05' },
-  { id:'ORD-003', customer:'Aravind Kumar',        date:'2026-06-30', items:12, total:'₹1,24,500', status:'Delivered',  delivery:'2026-07-03' },
-  { id:'ORD-004', customer:'Ibrahim Tiles',        date:'2026-06-28', items:8,  total:'₹68,000',   status:'Confirmed',  delivery:'2026-07-10' },
-]
-
-const INITIAL_CUSTOMERS = [
-  { id: 'C-001', name: 'Aravind Kumar',       phone: '9876543210', location: 'Gandhipuram',    custType: 'Owner',       expectedAmt: '₹80,000',   attendedBy: 'Ramesh', remarks: 'Wants premium wood finish tiles.', source: 'Google', size: '1500+', houseType: 'New', stage: 'Immediate', budget: 'Medium', date: '2026-07-03' },
-  { id: 'C-002', name: 'Suresh Constructions',phone: '9845612307', location: 'Peelamedu',       custType: 'Builder',     expectedAmt: '₹3,20,000', attendedBy: 'Siva',   remarks: 'Looking for imported marble.',     source: 'Engineer', size: '2500+', houseType: 'New', stage: 'Flooring Stage', budget: 'High', date: '2026-07-02' },
-  { id: 'C-003', name: 'Meena Rajan',         phone: '9003344556', location: 'RS Puram',        custType: 'Owner',       expectedAmt: '₹30,000',   attendedBy: 'Ramesh', remarks: 'Price too high initially.',         source: 'Walk In', size: '750+', houseType: 'Renovation', stage: 'Planning', budget: 'Low', date: '2026-07-01' },
-]
+const INITIAL_LEADS = []
+const INITIAL_ORDERS = []
+const INITIAL_CUSTOMERS = []
 
 if (!fs.existsSync(LEADS_FILE)) {
   fs.writeFileSync(LEADS_FILE, JSON.stringify(INITIAL_LEADS, null, 2), 'utf-8')
@@ -93,10 +107,7 @@ const INITIAL_STAFF = [
     shiftHours: 10,
     workingDays: '6 Days (Mon - Sat)',
     joinDate: '2025-01-15',
-    attendance: [
-      { date: '2026-07-25', checkIn: '09:05 AM', checkOut: '07:10 PM', totalHours: 10, status: 'Present', notes: 'Attended 4 walk-ins' },
-      { date: '2026-07-24', checkIn: '08:58 AM', checkOut: '07:00 PM', totalHours: 10, status: 'Present', notes: '' }
-    ]
+    attendance: []
   },
   {
     id: 'STF-002',
@@ -115,9 +126,7 @@ const INITIAL_STAFF = [
     shiftHours: 10,
     workingDays: '6 Days (Mon - Sat)',
     joinDate: '2025-03-01',
-    attendance: [
-      { date: '2026-07-25', checkIn: '08:30 AM', checkOut: '06:30 PM', totalHours: 10, status: 'Present', notes: 'Unloaded 2 KAG trucks' }
-    ]
+    attendance: []
   }
 ]
 if (!fs.existsSync(STAFF_FILE)) {
@@ -260,6 +269,7 @@ const mapFromPostgres = (lead) => ({
 // ─── Background Supabase Sync (fire-and-forget) ───────────────────────────────
 // Dev mode: API already responded to client. Supabase gets updated quietly.
 const syncUpsertToSupabase = (lead) => {
+  if (!supabase) return
   // Try with history first; if that column doesn't exist yet, retry without it
   supabase.from('leads').upsert([mapToPostgres(lead, true)])
     .then(({ error }) => {
@@ -279,6 +289,7 @@ const syncUpsertToSupabase = (lead) => {
 
 // Pull latest Supabase data on startup to refresh local cache
 const refreshLocalFromCloud = async () => {
+  if (!supabase) return
   try {
     const { data, error } = await supabase.from('leads').select('*').order('date', { ascending: false })
     if (error) { console.warn('⚠️  Startup cloud refresh failed:', error.message); return }
@@ -663,6 +674,28 @@ app.post('/api/staff/:id/attendance', (req, res) => {
   }
 })
 
+// Helper to calculate exact hours worked between two time strings
+function calcHoursBetween(checkInStr, checkOutStr) {
+  if (!checkInStr || !checkOutStr || checkOutStr === 'In Progress') return 0
+  const parseMins = (str) => {
+    const m = String(str).match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+    if (!m) return null
+    let [_, h, min, p] = m
+    h = parseInt(h)
+    min = parseInt(min)
+    if (p.toUpperCase() === 'PM' && h < 12) h += 12
+    if (p.toUpperCase() === 'AM' && h === 12) h = 0
+    return h * 60 + min
+  }
+  const start = parseMins(checkInStr)
+  const end = parseMins(checkOutStr)
+  if (start === null || end === null) return 0
+
+  let diffMins = end - start
+  if (diffMins < 0) diffMins += 24 * 60
+  return parseFloat((diffMins / 60).toFixed(1))
+}
+
 // ─── POST /api/staff/punch-in (Morning Login) ──────────────────────────────
 app.post('/api/staff/punch-in', (req, res) => {
   const { staffId, passcode, date, checkIn, notes } = req.body
@@ -682,16 +715,26 @@ app.post('/api/staff/punch-in', (req, res) => {
 
   const existingIdx = member.attendance.findIndex(a => a.date === todayStr)
   if (existingIdx !== -1) {
+    const existing = member.attendance[existingIdx]
+    // Already signed in & still working — block duplicate
+    if (existing.checkIn && existing.checkOut === 'In Progress') {
+      return res.status(400).json({
+        error: `${member.name} already signed in today at ${existing.checkIn}. Cannot sign in again!`
+      })
+    }
+    // Already signed off — allow re-sign-in (break / permission return)
     member.attendance[existingIdx].checkIn = timeStr
-    member.attendance[existingIdx].status = 'Present'
-    if (notes) member.attendance[existingIdx].notes = notes
+    member.attendance[existingIdx].checkOut = 'In Progress'
+    member.attendance[existingIdx].status = 'Working'
+    member.attendance[existingIdx].totalHours = 0
+    if (notes) member.attendance[existingIdx].notes = notes || 'Re-signed in after break'
   } else {
     member.attendance.unshift({
       date: todayStr,
       checkIn: timeStr,
       checkOut: 'In Progress',
       totalHours: 0,
-      status: 'Present',
+      status: 'Working',
       notes: notes || 'Morning Sign-In'
     })
   }
@@ -718,24 +761,69 @@ app.post('/api/staff/punch-out', (req, res) => {
   const timeStr = checkOut || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
 
   const existingIdx = member.attendance.findIndex(a => a.date === todayStr)
-  if (existingIdx !== -1) {
-    member.attendance[existingIdx].checkOut = timeStr
-    if (notes) member.attendance[existingIdx].notes = notes
-    member.attendance[existingIdx].totalHours = member.shiftHours || 9
-  } else {
-    member.attendance.unshift({
-      date: todayStr,
-      checkIn: '09:00 AM',
-      checkOut: timeStr,
-      totalHours: member.shiftHours || 9,
-      status: 'Present',
-      notes: notes || 'Evening Sign-Off'
+  if (existingIdx === -1 || !member.attendance[existingIdx].checkIn || member.attendance[existingIdx].checkIn === '—') {
+    return res.status(400).json({
+      error: `${member.name} HAS NOT signed in today yet! Must sign in first.`
     })
   }
+
+  const existing = member.attendance[existingIdx]
+  if (existing.checkOut && existing.checkOut !== 'In Progress') {
+    return res.status(400).json({
+      error: `${member.name} has ALREADY signed off for today at ${existing.checkOut}.`
+    })
+  }
+
+  const cIn = existing.checkIn || '09:00 AM'
+  member.attendance[existingIdx].checkOut = timeStr
+  member.attendance[existingIdx].status = 'Completed Day'
+  member.attendance[existingIdx].totalHours = calcHoursBetween(cIn, timeStr)
+  if (notes) member.attendance[existingIdx].notes = notes
+
   saveLocalStaff(staff)
   console.log(`⚡ Staff Sign-Off: ${member.name} (${member.id}) at ${timeStr}`)
   res.json({ success: true, member, message: `Goodbye ${member.name}! Signed off at ${timeStr}` })
 })
+
+// ─── POST /api/staff/:id/incentives (Add Incentive Record) ──────────────────
+app.post('/api/staff/:id/incentives', (req, res) => {
+  const { id } = req.params
+  const { clientName, date, purchaseValue, incentiveAmount, notes } = req.body
+  const staff = getLocalStaff()
+  const member = staff.find(s => s.id === id)
+  if (!member) {
+    return res.status(404).json({ error: 'Staff member not found.' })
+  }
+  if (!member.incentives) member.incentives = []
+  const record = {
+    id: `INC-${Date.now()}`,
+    clientName: clientName || '',
+    date: date || new Date().toISOString().split('T')[0],
+    purchaseValue: parseFloat(purchaseValue) || 0,
+    incentiveAmount: parseFloat(incentiveAmount) || 0,
+    notes: notes || '',
+    createdAt: new Date().toISOString()
+  }
+  member.incentives.unshift(record)
+  saveLocalStaff(staff)
+  console.log(`⚡ Incentive added for ${member.name}: ₹${record.incentiveAmount} (Client: ${record.clientName})`)
+  res.json({ success: true, member, record })
+})
+
+// ─── DELETE /api/staff/:id/incentives/:incId ────────────────────────────────
+app.delete('/api/staff/:id/incentives/:incId', (req, res) => {
+  const { id, incId } = req.params
+  const staff = getLocalStaff()
+  const member = staff.find(s => s.id === id)
+  if (!member) {
+    return res.status(404).json({ error: 'Staff member not found.' })
+  }
+  member.incentives = (member.incentives || []).filter(inc => inc.id !== incId)
+  saveLocalStaff(staff)
+  console.log(`⚡ Incentive ${incId} deleted for ${member.name}`)
+  res.json({ success: true, member })
+})
+
 app.post('/api/pricing-settings', (req, res) => {
   const { discount_percentage } = req.body
   if (discount_percentage === undefined || isNaN(discount_percentage)) {
@@ -1192,6 +1280,368 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
     console.error('Gemini invoice scanning error:', error)
     res.status(500).json({ error: error.message || 'Failed to scan purchase invoice.' })
   }
+})
+
+// ─── Chat Message Endpoints ──────────────────────────────────────────────────
+function getChatMessages() {
+  try {
+    return JSON.parse(fs.readFileSync(CHAT_FILE, 'utf-8'))
+  } catch (err) {
+    return []
+  }
+}
+function saveChatMessages(messages) {
+  fs.writeFileSync(CHAT_FILE, JSON.stringify(messages, null, 2), 'utf-8')
+}
+
+app.get('/api/chat/messages', (req, res) => {
+  res.json(getChatMessages())
+})
+
+app.post('/api/chat/messages', (req, res) => {
+  const { senderId, senderName, recipientId, message } = req.body
+  if (!senderId || !senderName || !message) {
+    return res.status(400).json({ error: 'Missing senderId, senderName, or message' })
+  }
+  const messages = getChatMessages()
+  const newMessage = {
+    id: `MSG-${Date.now()}`,
+    senderId,
+    senderName,
+    recipientId: recipientId || 'group',
+    message,
+    timestamp: new Date().toISOString()
+  }
+  messages.push(newMessage)
+  if (messages.length > 300) {
+    messages.shift()
+  }
+  saveChatMessages(messages)
+  res.json({ success: true, message: newMessage })
+})
+
+// ─── Sales Returns Endpoints ──────────────────────────────────────────────────
+function getLocalReturns() {
+  try {
+    return JSON.parse(fs.readFileSync(RETURNS_FILE, 'utf-8'))
+  } catch (err) {
+    return []
+  }
+}
+function saveLocalReturns(returns) {
+  fs.writeFileSync(RETURNS_FILE, JSON.stringify(returns, null, 2), 'utf-8')
+}
+
+const RETURN_REASONS = ['Over Bought', 'Broken', 'Batch Variant', 'Wrong Item Delivered', 'Quality Issue']
+
+function normalizeKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function findOrderByBillNo(billNo) {
+  const query = normalizeKey(billNo)
+  if (!query) return null
+  return getLocalOrders().find(order => normalizeKey(order.id) === query) || null
+}
+
+function findProductForReturnItem(item, products = getLocalProducts()) {
+  const itemKey = normalizeKey(item.description || item.productName || item.product_name)
+  const productId = item.productId || item.selectedId
+
+  return products.find(product => {
+    if (productId && product.id === productId) return true
+    const productKey = normalizeKey(`${product.name || ''} ${product.size || ''}`)
+    const nameKey = normalizeKey(product.name)
+    return productKey && (itemKey === productKey || itemKey.includes(productKey) || (nameKey && itemKey.includes(nameKey)))
+  }) || null
+}
+
+function buildReturnableOrder(order, returns = getLocalReturns()) {
+  const itemsList = Array.isArray(order?.itemsList) ? order.itemsList : []
+  const returnedByItem = new Map()
+
+  returns
+    .filter(ret => normalizeKey(ret.billNo) === normalizeKey(order.id))
+    .forEach(ret => {
+      ;(ret.items || []).forEach(item => {
+        const key = normalizeKey(item.description || item.productName || item.product_name)
+        returnedByItem.set(key, (returnedByItem.get(key) || 0) + (parseInt(item.quantity) || 0))
+      })
+    })
+
+  return {
+    billNo: order.id,
+    orderId: order.id,
+    customerName: order.customer || '',
+    phone: order.phone || '',
+    location: order.location || '',
+    date: order.date || '',
+    delivery: order.delivery || '',
+    total: order.total || '',
+    status: order.status || '',
+    items: itemsList.map((item, idx) => {
+      const description = item.description || item.productName || item.product_name || `Item ${idx + 1}`
+      const purchasedQty = parseInt(item.quantity) || 0
+      const alreadyReturned = returnedByItem.get(normalizeKey(description)) || 0
+      const product = findProductForReturnItem(item)
+      return {
+        lineId: normalizeKey(description) || `line-${idx + 1}`,
+        description,
+        productId: product?.id || item.productId || '',
+        productName: product?.name || description,
+        size: product?.size || item.size || '',
+        unit: item.unit || product?.unit || 'Boxes',
+        rate: parseFloat(item.rate) || 0,
+        amount: parseFloat(item.amount) || 0,
+        purchasedQty,
+        alreadyReturned,
+        remainingQty: Math.max(purchasedQty - alreadyReturned, 0)
+      }
+    })
+  }
+}
+
+app.get('/api/returns', (req, res) => {
+  res.json(getLocalReturns())
+})
+
+app.get('/api/returns/lookup/:billNo', (req, res) => {
+  const order = findOrderByBillNo(req.params.billNo)
+  if (!order) {
+    return res.status(404).json({ error: 'Bill / Order number not found. Return can be created only from purchased order items.' })
+  }
+  res.json(buildReturnableOrder(order))
+})
+
+app.post('/api/returns', (req, res) => {
+  const { billNo, customerName, date, returnReason, items, notes, totalRefund } = req.body
+
+  if (!billNo || !String(billNo).trim()) {
+    return res.status(400).json({ error: 'Bill No (Invoice / Order Number) is strictly mandatory for return!' })
+  }
+  if (!returnReason || !String(returnReason).trim()) {
+    return res.status(400).json({ error: 'Return Reason is strictly mandatory!' })
+  }
+  if (!RETURN_REASONS.includes(returnReason.trim())) {
+    return res.status(400).json({ error: 'Please select a valid return reason.' })
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Select at least one purchased item to return.' })
+  }
+
+  const order = findOrderByBillNo(billNo)
+  if (!order) {
+    return res.status(404).json({ error: 'Bill / Order number not found. Return can be created only from purchased order items.' })
+  }
+
+  const returns = getLocalReturns()
+  const returnableOrder = buildReturnableOrder(order, returns)
+  const orderItemsByLine = new Map(returnableOrder.items.map(item => [item.lineId, item]))
+  const cleanItems = []
+
+  for (const item of items) {
+    const lineId = item.lineId || normalizeKey(item.description || item.productName || item.product_name)
+    const purchasedItem = orderItemsByLine.get(lineId)
+    const qty = parseInt(item.quantity || item.boxes) || 0
+
+    if (!purchasedItem) {
+      return res.status(400).json({ error: `"${item.description || item.productName || 'Item'}" is not present in this bill.` })
+    }
+    if (qty <= 0) {
+      return res.status(400).json({ error: `Return quantity must be greater than 0 for "${purchasedItem.description}".` })
+    }
+    if (qty > purchasedItem.remainingQty) {
+      return res.status(400).json({ error: `Return quantity for "${purchasedItem.description}" cannot exceed remaining purchased quantity (${purchasedItem.remainingQty}).` })
+    }
+
+    cleanItems.push({
+      lineId: purchasedItem.lineId,
+      description: purchasedItem.description,
+      productId: purchasedItem.productId,
+      productName: purchasedItem.productName,
+      size: purchasedItem.size,
+      unit: purchasedItem.unit,
+      rate: purchasedItem.rate,
+      quantity: qty,
+      amount: qty * (parseFloat(purchasedItem.rate) || 0)
+    })
+  }
+
+  const isBroken = returnReason.toLowerCase().includes('broken')
+
+  const newReturn = {
+    id: `RET-${Date.now()}`,
+    billNo: order.id,
+    customerName: order.customer || customerName || 'Walk-in Customer',
+    phone: order.phone || '',
+    location: order.location || '',
+    date: date || new Date().toISOString().split('T')[0],
+    returnReason: returnReason.trim(),
+    stockRestocked: !isBroken,
+    items: cleanItems,
+    notes: notes || '',
+    totalRefund: parseFloat(totalRefund) || cleanItems.reduce((sum, item) => sum + item.amount, 0),
+    createdAt: new Date().toISOString()
+  }
+
+  // Stock Adjustment Rule:
+  // If NOT broken, add returned box quantities back to product stock in data/products.json!
+  if (!isBroken && cleanItems.length > 0) {
+    const products = getLocalProducts()
+    let stockUpdated = false
+
+    cleanItems.forEach(item => {
+      const boxesToReturn = parseInt(item.quantity) || 0
+      if (boxesToReturn > 0) {
+        const prod = products.find(p => p.id === item.productId) || findProductForReturnItem(item, products)
+        if (prod) {
+          prod.stock = (parseInt(prod.stock) || 0) + boxesToReturn
+          prod.available = (parseInt(prod.available) || 0) + boxesToReturn
+          stockUpdated = true
+          console.log(`📦 Restocked product ${prod.id} (${prod.name}): +${boxesToReturn} boxes (New Stock: ${prod.stock})`)
+        }
+      }
+    })
+
+    if (stockUpdated) {
+      saveLocalProducts(products)
+    }
+  } else if (isBroken) {
+    console.log(`⚠️ Return reason is BROKEN. Products will NOT be added back to stock inventory.`)
+  }
+
+  returns.unshift(newReturn)
+  saveLocalReturns(returns)
+  res.status(201).json(newReturn)
+})
+
+app.delete('/api/returns/:id', (req, res) => {
+  const { id } = req.params
+  let returns = getLocalReturns()
+  returns = returns.filter(r => r.id !== id)
+  saveLocalReturns(returns)
+  res.json({ success: true, message: `Return ${id} deleted` })
+})
+
+// ─── Referral System Endpoints ────────────────────────────────────────────────
+function getLocalReferrals() {
+  try {
+    return JSON.parse(fs.readFileSync(REFERRALS_FILE, 'utf-8'))
+  } catch (err) {
+    return []
+  }
+}
+function saveLocalReferrals(referrals) {
+  fs.writeFileSync(REFERRALS_FILE, JSON.stringify(referrals, null, 2), 'utf-8')
+}
+
+// GET /api/referrals
+app.get('/api/referrals', (req, res) => {
+  res.json(getLocalReferrals())
+})
+
+// POST /api/referrals (Create Referral Partner)
+app.post('/api/referrals', (req, res) => {
+  const { name, category, phone, whatsapp, location, commissionType, commissionValue, upiId, notes } = req.body
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Partner Name is required.' })
+  }
+  const referrals = getLocalReferrals()
+  const nextNum = referrals.length + 1
+  const newPartner = {
+    id: `REF-${String(nextNum).padStart(3, '0')}`,
+    name: name.trim(),
+    category: category || 'Mestri / Mason',
+    phone: phone || '',
+    whatsapp: whatsapp || phone || '',
+    location: location || '',
+    commissionType: commissionType || 'Percentage',
+    commissionValue: parseFloat(commissionValue) || 3,
+    upiId: upiId || '',
+    notes: notes || '',
+    status: 'Active',
+    createdDate: new Date().toISOString().split('T')[0],
+    payouts: [],
+    referredOrders: []
+  }
+  referrals.unshift(newPartner)
+  saveLocalReferrals(referrals)
+  console.log(`⚡ Created referral partner ${newPartner.id} (${newPartner.name})`)
+  res.status(201).json(newPartner)
+})
+
+// PUT /api/referrals/:id (Update Referral Partner)
+app.put('/api/referrals/:id', (req, res) => {
+  const { id } = req.params
+  const updatedData = req.body
+  const referrals = getLocalReferrals()
+  const idx = referrals.findIndex(r => r.id === id)
+  if (idx !== -1) {
+    referrals[idx] = { ...referrals[idx], ...updatedData }
+    saveLocalReferrals(referrals)
+    res.json(referrals[idx])
+  } else {
+    res.status(404).json({ error: 'Referral partner not found' })
+  }
+})
+
+// DELETE /api/referrals/:id
+app.delete('/api/referrals/:id', (req, res) => {
+  const { id } = req.params
+  let referrals = getLocalReferrals()
+  referrals = referrals.filter(r => r.id !== id)
+  saveLocalReferrals(referrals)
+  res.json({ success: true, message: `Referral partner ${id} deleted` })
+})
+
+// POST /api/referrals/:id/orders (Link Referred Client Order)
+app.post('/api/referrals/:id/orders', (req, res) => {
+  const { id } = req.params
+  const { orderId, clientName, date, orderAmount, commissionAmount } = req.body
+  const referrals = getLocalReferrals()
+  const partner = referrals.find(r => r.id === id)
+  if (!partner) return res.status(404).json({ error: 'Referral partner not found' })
+
+  if (!partner.referredOrders) partner.referredOrders = []
+  const newOrderEntry = {
+    id: `REFORD-${Date.now()}`,
+    orderId: orderId || 'CUSTOM',
+    clientName: clientName || 'Client Order',
+    date: date || new Date().toISOString().split('T')[0],
+    orderAmount: parseFloat(orderAmount) || 0,
+    commissionAmount: parseFloat(commissionAmount) || 0,
+    status: 'Approved'
+  }
+  partner.referredOrders.unshift(newOrderEntry)
+  saveLocalReferrals(referrals)
+  console.log(`⚡ Linked referred order for ${partner.name}: ₹${newOrderEntry.commissionAmount} commission`)
+  res.json({ success: true, partner, newOrderEntry })
+})
+
+// POST /api/referrals/:id/payouts (Record Commission Payout)
+app.post('/api/referrals/:id/payouts', (req, res) => {
+  const { id } = req.params
+  const { date, amount, mode, notes } = req.body
+  const referrals = getLocalReferrals()
+  const partner = referrals.find(r => r.id === id)
+  if (!partner) return res.status(404).json({ error: 'Referral partner not found' })
+
+  if (!partner.payouts) partner.payouts = []
+  const payoutEntry = {
+    id: `PAY-${Date.now()}`,
+    date: date || new Date().toISOString().split('T')[0],
+    amount: parseFloat(amount) || 0,
+    mode: mode || 'UPI',
+    notes: notes || 'Commission payout'
+  }
+  partner.payouts.unshift(payoutEntry)
+  saveLocalReferrals(referrals)
+  console.log(`⚡ Recorded payout of ₹${payoutEntry.amount} for ${partner.name}`)
+  res.json({ success: true, partner, payoutEntry })
 })
 
 // ─── Start Server ─────────────────────────────────────────────────────────────

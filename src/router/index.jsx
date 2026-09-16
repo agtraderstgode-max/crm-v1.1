@@ -16,8 +16,12 @@ import { ProductsPage }    from '@/modules/inventory/products/pages/ProductsPage
 import { StockPage }       from '@/modules/inventory/stock/pages/StockPage'
 import { SettingsPage }    from '@/modules/settings/pages/SettingsPage'
 import { PurchasePage }    from '@/modules/inventory/purchase/pages/PurchasePage'
+import { ReturnsPage }     from '@/modules/inventory/returns/pages/ReturnsPage'
 import { PriceCategoriesPage } from '@/modules/inventory/price-categories/pages/PriceCategoriesPage'
 import { StaffPage }           from '@/modules/staff/pages/StaffPage'
+import { ChatPage }            from '@/modules/chat/pages/ChatPage'
+import { MarketingPage }       from '@/modules/marketing/pages/MarketingPage'
+import { ReferralPage }        from '@/modules/referral/pages/ReferralPage'
 
 export const router = createBrowserRouter([
   {
@@ -30,6 +34,7 @@ export const router = createBrowserRouter([
       // Core
       { path: 'dashboard',  element: <DashboardPage /> },
       { path: 'analysis',   element: <AnalysisPage /> },
+      { path: 'chat',       element: <ChatPage /> },
       { path: 'settings',   element: <SettingsPage /> },
 
       // CRM module
@@ -44,10 +49,15 @@ export const router = createBrowserRouter([
       { path: 'payments',   element: <PaymentsPage /> },
       { path: 'billing',    element: <BillingPage /> },
 
+      // Marketing module
+      { path: 'marketing',  element: <MarketingPage /> },
+      { path: 'referral',   element: <ReferralPage /> },
+
       // Inventory module
       { path: 'products',   element: <ProductsPage /> },
       { path: 'stock',      element: <StockPage /> },
       { path: 'purchase-invoices', element: <PurchasePage /> },
+      { path: 'returns',    element: <ReturnsPage /> },
       { path: 'price-categories', element: <PriceCategoriesPage /> },
 
       // Operations module

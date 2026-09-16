@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { ShoppingCart, Calendar, Truck, User, Phone, MapPin, X, CheckCircle, Package } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ShoppingCart, Calendar, Truck, User, Phone, MapPin, X, CheckCircle, Package, RotateCcw } from 'lucide-react'
 import { cn, fmtDate, fmtTimestamp } from '@/lib/utils'
 
 const STATUS_STYLE = {
@@ -10,9 +11,8 @@ const STATUS_STYLE = {
   Cancelled:  'bg-red-100 text-red-600 border border-red-200'
 }
 
-
-
 export function OrdersPage() {
+  const navigate = useNavigate()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState(null)
@@ -289,15 +289,26 @@ export function OrdersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3.5">
-                    <button
-                      onClick={() => handleOpenDrawer(o)}
-                      className={cn(
-                        "text-xs font-semibold hover:underline transition-all whitespace-nowrap",
-                        o.status === 'Processing' ? "text-amber-600 hover:text-amber-700" : "text-blue-600 hover:text-blue-700"
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleOpenDrawer(o)}
+                        className={cn(
+                          "text-xs font-semibold hover:underline transition-all whitespace-nowrap",
+                          o.status === 'Processing' ? "text-amber-600 hover:text-amber-700" : "text-blue-600 hover:text-blue-700"
+                        )}
+                      >
+                        {o.status === 'Processing' ? '📝 Plan Dispatch' : '🔍 View Details'}
+                      </button>
+                      {(o.status === 'Delivered' || o.status === 'Dispatched') && (
+                        <button
+                          onClick={() => navigate(`/returns?billNo=${o.id}`)}
+                          className="text-[11px] font-bold text-violet-600 hover:text-violet-700 border border-violet-200 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-md transition-all flex items-center gap-1 whitespace-nowrap"
+                          title="Process Sales Return for this order"
+                        >
+                          <RotateCcw className="h-3 w-3" /> Return
+                        </button>
                       )}
-                    >
-                      {o.status === 'Processing' ? '📝 Plan Dispatch' : '🔍 View Details'}
-                    </button>
+                    </div>
                   </td>
                 </tr>
               ))}

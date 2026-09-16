@@ -25,4 +25,9 @@ dist-ssr
 
 # Local database file
 data/
+data_backup_before_launch/
+
+# Environment files
+.env
+.env*.local
 

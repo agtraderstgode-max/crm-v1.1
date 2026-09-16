@@ -122,8 +122,11 @@ export function DashboardPage() {
     .then(([customersData, leadsData, ordersData, staffData]) => {
       setCustomers(Array.isArray(customersData) ? customersData : [])
       setLeads(Array.isArray(leadsData) ? leadsData : [])
-      setOrders(Array.isArray(ordersData) ? ordersData : [])
-      setStaffList(Array.isArray(staffData) ? staffData : [])
+      const sList = Array.isArray(staffData) ? staffData : []
+      setStaffList(sList)
+      if (sList.length > 0 && !selectedStaffId) {
+        setSelectedStaffId(sList[0].id)
+      }
       setLoading(false)
     })
     .catch(err => {
@@ -219,11 +222,18 @@ export function DashboardPage() {
     .sort((a, b) => b.id.localeCompare(a.id))
     .slice(0, 5)
 
-  // Currently Signed In Staff Today
-  const todaySignedInStaff = staffList.filter(s => {
+  // Filter staff lists for Sign-In vs Sign-Off
+  const staffToSignIn = staffList.filter(s => {
     const todayLog = (s.attendance || []).find(a => a.date === todayStr)
-    return todayLog && todayLog.checkIn && (!todayLog.checkOut || todayLog.checkOut === 'In Progress')
+    return !todayLog || !todayLog.checkIn || todayLog.checkIn === '—'
   })
+
+  const staffToSignOff = staffList.filter(s => {
+    const todayLog = (s.attendance || []).find(a => a.date === todayStr)
+    return todayLog && todayLog.checkIn && todayLog.checkOut === 'In Progress'
+  })
+
+  const displayedStaffPills = punchMode === 'in' ? staffToSignIn : staffToSignOff
 
   const stats = [
     {
@@ -290,14 +300,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI Stats Grid */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-        {stats.map((s) => (
-          <StatCard key={s.title} {...s} />
-        ))}
-      </div>
-
-      {/* 🌟 SHORT, NEAT & SIMPLE STAFF PUNCH BAR 🌟 */}
+      {/* 🌟 SHORT, NEAT & SIMPLE STAFF PUNCH BAR (TOP) 🌟 */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col md:flex-row items-center justify-between gap-3">
           
@@ -309,18 +312,21 @@ export function DashboardPage() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-slate-900">Staff Shift Punch</span>
-                {todaySignedInStaff.length > 0 && (
+                {staffToSignOff.length > 0 && (
                   <span className="bg-emerald-50 text-emerald-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-200">
-                    {todaySignedInStaff.length} On-Duty
+                    {staffToSignOff.length} On-Duty
                   </span>
                 )}
               </div>
               <div className="flex gap-1.5 mt-1">
                 <button
                   type="button"
-                  onClick={() => { setPunchMode('in'); setPunchStatusMsg({ type: '', text: '' }); }}
+                  onClick={() => {
+                    setPunchMode('in')
+                    setPunchStatusMsg({ type: '', text: '' })
+                  }}
                   className={cn(
-                    'text-xs font-bold px-2.5 py-0.5 rounded-md transition-all cursor-pointer',
+                    'text-xs font-bold px-2.5 py-0.5 rounded-md transition-all cursor-pointer flex items-center gap-1',
                     punchMode === 'in'
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'bg-slate-100 text-slate-500 hover:text-slate-900'
@@ -330,9 +336,12 @@ export function DashboardPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setPunchMode('out'); setPunchStatusMsg({ type: '', text: '' }); }}
+                  onClick={() => {
+                    setPunchMode('out')
+                    setPunchStatusMsg({ type: '', text: '' })
+                  }}
                   className={cn(
-                    'text-xs font-bold px-2.5 py-0.5 rounded-md transition-all cursor-pointer',
+                    'text-xs font-bold px-2.5 py-0.5 rounded-md transition-all cursor-pointer flex items-center gap-1',
                     punchMode === 'out'
                       ? 'bg-rose-600 text-white shadow-sm'
                       : 'bg-slate-100 text-slate-500 hover:text-slate-900'
@@ -344,19 +353,52 @@ export function DashboardPage() {
             </div>
           </div>
 
-          {/* Inline Form */}
-          <form onSubmit={handlePunchSubmit} className="flex items-center gap-2 w-full md:w-auto">
-            <select
-              value={selectedStaffId}
-              onChange={(e) => setSelectedStaffId(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white"
-              required
-            >
-              <option value="" disabled>-- Select Staff --</option>
-              {staffList.map(s => (
-                <option key={s.id} value={s.id}>{s.name} ({s.id})</option>
-              ))}
-            </select>
+          {/* Inline Form with Quick Staff Pills */}
+          <form onSubmit={handlePunchSubmit} className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            {/* Quick Staff Selection Pills (Always Display All Staff) */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+              {staffList.length === 0 ? (
+                <span className="px-3 py-1 text-xs font-bold text-slate-400 italic">No staff found</span>
+              ) : (
+                staffList.map(s => {
+                  const shortName = s.name ? s.name.split(' ')[0] : s.id
+                  const isSelected = selectedStaffId === s.id
+                  const todayLog = (s.attendance || []).find(a => a.date === todayStr)
+                  const isWorkingNow = todayLog && todayLog.checkIn && todayLog.checkOut === 'In Progress'
+                  const isCompletedToday = todayLog && todayLog.checkIn && todayLog.checkOut && todayLog.checkOut !== 'In Progress'
+
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedStaffId(s.id)
+                        setPunchStatusMsg({ type: '', text: '' })
+                        if (isWorkingNow) {
+                          setPunchMode('out')
+                        } else {
+                          setPunchMode('in')
+                        }
+                      }}
+                      className={cn(
+                        'px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5',
+                        isSelected
+                          ? (punchMode === 'in' ? 'bg-blue-600 text-white shadow-sm' : 'bg-rose-600 text-white shadow-sm')
+                          : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
+                      )}
+                    >
+                      <span>{shortName}</span>
+                      {isWorkingNow && (
+                        <span className="h-2 w-2 rounded-full bg-emerald-400 border border-white animate-pulse" title="On-Duty" />
+                      )}
+                      {isCompletedToday && (
+                        <span className="text-[10px] text-slate-400 font-extrabold" title="Completed Shift">✓</span>
+                      )}
+                    </button>
+                  )
+                })
+              )}
+            </div>
 
             <div className="relative w-28">
               <Key className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -397,6 +439,13 @@ export function DashboardPage() {
             <span>{punchStatusMsg.text}</span>
           </div>
         )}
+      </div>
+
+      {/* KPI Stats Grid */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+        {stats.map((s) => (
+          <StatCard key={s.title} {...s} />
+        ))}
       </div>
 
       {/* Bottom 2 panels */}

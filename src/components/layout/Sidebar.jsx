@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
   BarChart3,
+  MessageSquare,
   Users,
   UserCheck,
   TrendingUp,
@@ -20,6 +21,9 @@ import {
   CreditCard,
   FileSpreadsheet,
   Layers,
+  RotateCcw,
+  Megaphone,
+  Share2,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -28,6 +32,7 @@ const NAV_GROUPS = [
     items: [
       { label: 'Dashboard',    icon: LayoutDashboard, to: '/dashboard' },
       { label: 'Analysis',     icon: BarChart3,       to: '/analysis' },
+      { label: 'Chat Window',  icon: MessageSquare,   to: '/chat' },
     ],
   },
   {
@@ -53,7 +58,15 @@ const NAV_GROUPS = [
       { label: 'Products',    icon: Package,        to: '/products' },
       { label: 'Stock',       icon: Warehouse,      to: '/stock' },
       { label: 'Purchase Invoice', icon: FileSpreadsheet, to: '/purchase-invoices' },
+      { label: 'Return',      icon: RotateCcw,      to: '/returns' },
       { label: 'Price Category', icon: Layers,       to: '/price-categories' },
+    ],
+  },
+  {
+    label: 'Marketing',
+    items: [
+      { label: 'Marketing', icon: Megaphone, to: '/marketing', badge: 'purpleDot' },
+      { label: 'Referral',  icon: Share2,    to: '/referral',  badge: 'purpleDot' },
     ],
   },
   {
@@ -108,6 +121,12 @@ export function Sidebar() {
                   >
                     <item.icon className="h-4 w-4 flex-shrink-0" />
                     <span className="flex-1">{item.label}</span>
+                    {item.badge === 'purpleDot' && (
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <span className="h-2.5 w-2.5 rounded-full bg-purple-500 border border-purple-300/50 shadow-[0_0_8px_rgba(168,85,247,0.8)]" />
+                        <span className="text-[10px] font-medium text-purple-300/90 lowercase">not finished yet</span>
+                      </div>
+                    )}
                   </NavLink>
                 </li>
               ))}
