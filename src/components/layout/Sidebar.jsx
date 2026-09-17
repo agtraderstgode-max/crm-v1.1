@@ -24,6 +24,7 @@ import {
   RotateCcw,
   Megaphone,
   Share2,
+  ScrollText,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -33,6 +34,7 @@ const NAV_GROUPS = [
       { label: 'Dashboard',    icon: LayoutDashboard, to: '/dashboard' },
       { label: 'Analysis',     icon: BarChart3,       to: '/analysis' },
       { label: 'Chat Window',  icon: MessageSquare,   to: '/chat' },
+      { label: 'Letter Pad',   icon: ScrollText,      to: '/letter-pad' },
     ],
   },
   {

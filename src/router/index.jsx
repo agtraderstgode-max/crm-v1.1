@@ -22,6 +22,7 @@ import { StaffPage }           from '@/modules/staff/pages/StaffPage'
 import { ChatPage }            from '@/modules/chat/pages/ChatPage'
 import { MarketingPage }       from '@/modules/marketing/pages/MarketingPage'
 import { ReferralPage }        from '@/modules/referral/pages/ReferralPage'
+import { LetterPadPage }       from '@/modules/letterpad/pages/LetterPadPage'
 
 export const router = createBrowserRouter([
   {
@@ -35,6 +36,7 @@ export const router = createBrowserRouter([
       { path: 'dashboard',  element: <DashboardPage /> },
       { path: 'analysis',   element: <AnalysisPage /> },
       { path: 'chat',       element: <ChatPage /> },
+      { path: 'letter-pad', element: <LetterPadPage /> },
       { path: 'settings',   element: <SettingsPage /> },
 
       // CRM module
