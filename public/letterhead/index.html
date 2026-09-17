@@ -18,35 +18,88 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 20px 0 60px 0;
+      padding: 15px 0 60px 0;
       min-height: 100vh;
     }
 
     /* Top Floating Toolbar */
     .toolbar {
       position: sticky;
-      top: 15px;
+      top: 12px;
       z-index: 100;
-      background: rgba(255, 255, 255, 0.96);
-      backdrop-filter: blur(10px);
-      padding: 10px 22px;
+      background: rgba(255, 255, 255, 0.97);
+      backdrop-filter: blur(12px);
+      padding: 7px 18px;
       border-radius: 50px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.38);
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 25px;
-      border: 1px solid #e2e8f0;
+      gap: 8px;
+      margin-bottom: 22px;
+      border: 1px solid #cbd5e1;
+      flex-wrap: wrap;
+      justify-content: center;
     }
 
     .toolbar-title {
-      font-size: 13.5px;
+      font-size: 13px;
       font-weight: 700;
       color: #0F2942;
-      margin-right: 6px;
+      margin-right: 4px;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
+      letter-spacing: 0.3px;
+    }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 22px;
+      background-color: #cbd5e1;
+      margin: 0 3px;
+    }
+
+    .btn-group {
+      display: inline-flex;
+      align-items: center;
+      background: #f1f5f9;
+      border-radius: 24px;
+      padding: 2px 4px;
+      gap: 2px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .btn-fmt {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: #475569;
+      width: 29px;
+      height: 29px;
+      border-radius: 15px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+
+    .btn-fmt:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    .btn-fmt:active, .btn-fmt.active {
+      background: #0284C7;
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);
+    }
+
+    .btn-fmt svg {
+      pointer-events: none;
     }
 
     .btn {
@@ -54,15 +107,16 @@
       border: none;
       background: #f1f5f9;
       color: #334155;
-      padding: 8px 16px;
+      padding: 7px 14px;
       border-radius: 30px;
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 600;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       transition: all 0.2s ease;
+      border: 1px solid transparent;
     }
 
     .btn:hover {
@@ -90,10 +144,10 @@
     }
 
     .status-text {
-      font-size: 12px;
+      font-size: 11.5px;
       color: #10b981;
       font-weight: 600;
-      margin-left: 6px;
+      margin-left: 4px;
     }
 
     /* A4 Paper Sheet */
@@ -194,6 +248,15 @@
       pointer-events: none;
     }
 
+    .body-content ul, .body-content ol {
+      padding-left: 24px;
+      margin: 8px 0;
+    }
+
+    .body-content li {
+      margin-bottom: 4px;
+    }
+
     /* Footer */
     .footer {
       position: relative;
@@ -273,6 +336,48 @@
     <div class="toolbar-title">
       🏢 AG TRADERS
     </div>
+
+    <!-- Text Formatting: Bold, Italic, Underline -->
+    <div class="btn-group">
+      <button type="button" id="btn-bold" class="btn-fmt" onmousedown="event.preventDefault(); execFormat('bold');" title="Bold (Ctrl+B)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
+      </button>
+      <button type="button" id="btn-italic" class="btn-fmt" onmousedown="event.preventDefault(); execFormat('italic');" title="Italic (Ctrl+I)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
+      </button>
+      <button type="button" id="btn-underline" class="btn-fmt" onmousedown="event.preventDefault(); execFormat('underline');" title="Underline (Ctrl+U)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a6 6 0 0 0 12 0V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
+      </button>
+    </div>
+
+    <!-- Alignment: Left, Center, Right, Justify -->
+    <div class="btn-group">
+      <button type="button" id="btn-justifyLeft" class="btn-fmt" onmousedown="event.preventDefault(); execFormat('justifyLeft');" title="Align Left">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
+      </button>
+      <button type="button" id="btn-justifyCenter" class="btn-fmt" onmousedown="event.preventDefault(); execFormat('justifyCenter');" title="Align Center">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="10" x2="6" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="18" y1="18" x2="6" y2="18"/></svg>
+      </button>
+      <button type="button" id="btn-justifyRight" class="btn-fmt" onmousedown="event.preventDefault(); execFormat('justifyRight');" title="Align Right">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg>
+      </button>
+      <button type="button" id="btn-justifyFull" class="btn-fmt" onmousedown="event.preventDefault(); execFormat('justifyFull');" title="Justify (Equal Margin)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>
+      </button>
+    </div>
+
+    <!-- Lists: Bullets, Numbers -->
+    <div class="btn-group">
+      <button type="button" id="btn-insertUnorderedList" class="btn-fmt" onmousedown="event.preventDefault(); execFormat('insertUnorderedList');" title="Bullet List">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      </button>
+      <button type="button" id="btn-insertOrderedList" class="btn-fmt" onmousedown="event.preventDefault(); execFormat('insertOrderedList');" title="Numbered List">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
+      </button>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
     <button class="btn btn-primary" onclick="window.print()">
       🖨️ Print / Save as PDF
     </button>
@@ -312,7 +417,7 @@
     </div>
 
     <!-- Live Editable Content Area -->
-    <div id="editor" class="body-content" contenteditable="true" data-placeholder="Click here and start typing your letter, quotation, or official notice... (Tip: You can press Cmd+B for Bold, Cmd+I for Italic, or paste tables)"></div>
+    <div id="editor" class="body-content" contenteditable="true" data-placeholder="Click here and start typing your letter, quotation, or official notice... (Tip: You can use the formatting tools above, or Cmd+B / Cmd+I)"></div>
 
     <!-- Footer Banner -->
     <div class="footer">
@@ -326,6 +431,44 @@
     const refNo = document.getElementById('refNo');
     const letterDate = document.getElementById('letterDate');
     const saveStatus = document.getElementById('saveStatus');
+
+    function execFormat(cmd, value = null) {
+      document.execCommand(cmd, false, value);
+      editor.focus();
+      triggerSave();
+      updateToolbarActiveStates();
+    }
+
+    function updateToolbarActiveStates() {
+      const commands = [
+        { id: 'btn-bold', cmd: 'bold' },
+        { id: 'btn-italic', cmd: 'italic' },
+        { id: 'btn-underline', cmd: 'underline' },
+        { id: 'btn-justifyLeft', cmd: 'justifyLeft' },
+        { id: 'btn-justifyCenter', cmd: 'justifyCenter' },
+        { id: 'btn-justifyRight', cmd: 'justifyRight' },
+        { id: 'btn-justifyFull', cmd: 'justifyFull' },
+        { id: 'btn-insertUnorderedList', cmd: 'insertUnorderedList' },
+        { id: 'btn-insertOrderedList', cmd: 'insertOrderedList' }
+      ];
+
+      commands.forEach(({ id, cmd }) => {
+        const btn = document.getElementById(id);
+        if (btn) {
+          try {
+            if (document.queryCommandState(cmd)) {
+              btn.classList.add('active');
+            } else {
+              btn.classList.remove('active');
+            }
+          } catch(e) {}
+        }
+      });
+    }
+
+    document.addEventListener('selectionchange', updateToolbarActiveStates);
+    editor.addEventListener('keyup', updateToolbarActiveStates);
+    editor.addEventListener('mouseup', updateToolbarActiveStates);
 
     function getTodayFormatted() {
       const now = new Date();
