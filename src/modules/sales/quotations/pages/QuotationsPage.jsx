@@ -27,7 +27,7 @@ export function QuotationsPage() {
   }
 
   const handleOpenNewTab = () => {
-    window.open('/quotation-planner/index.html', '_blank')
+    window.open('/quotation-planner/', '_blank')
   }
 
   return (
@@ -101,7 +101,7 @@ export function QuotationsPage() {
         <iframe
           key={iframeKey}
           ref={iframeRef}
-          src="/quotation-planner/index.html"
+          src="/quotation-planner/"
           title="Quotation Box Planner"
           className="w-full h-full border-none bg-slate-900"
         />

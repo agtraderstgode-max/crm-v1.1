@@ -1,7 +1,6 @@
 const CACHE_NAME = 'ag-traders-v20';
 const ASSETS = [
   './',
-  './index.html',
   './style.css',
   './app.js',
   './manifest.json',

@@ -28,7 +28,7 @@ export function LetterPadPage() {
   }
 
   const handleOpenNewTab = () => {
-    window.open('/letterhead/index.html', '_blank')
+    window.open('/letterhead/', '_blank')
   }
 
   return (
@@ -102,7 +102,7 @@ export function LetterPadPage() {
         <iframe
           key={iframeKey}
           ref={iframeRef}
-          src="/letterhead/index.html"
+          src="/letterhead/"
           title="AG TRADERS Letterhead Editor"
           className="w-full h-full border-0 bg-[#0f172a]"
         />

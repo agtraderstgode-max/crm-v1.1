@@ -722,11 +722,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initVisualEffects();
 
-  // Register PWA Service Worker
+  // Handle PWA Service Worker (only register standalone, unregister inside CRM iframe)
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js')
-      .then(reg => console.log('Service Worker registered successfully!', reg))
-      .catch(err => console.error('Service Worker registration failed:', err));
+    if (window.self !== window.top) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        for (const reg of registrations) {
+          reg.unregister();
+        }
+      }).catch(() => {});
+    } else {
+      navigator.serviceWorker.register('service-worker.js')
+        .then(reg => console.log('Service Worker registered successfully!', reg))
+        .catch(err => console.error('Service Worker registration failed:', err));
+    }
   }
 
   // Real-time Capitalization for inputs
