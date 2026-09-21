@@ -217,29 +217,26 @@ export function ContactsPage() {
     return ['All', ...Array.from(set)]
   }, [contacts])
 
-  // Category counts for tab pills
+  // Category counts for tab pills (Dynamic based on actual contacts data)
   const categoryCounts = useMemo(() => {
     const counts = {
-      All: 124,
-      'Tile Layer': 78,
-      Builder: 28,
-      Contractor: 12,
-      Architect: 6,
+      All: contacts.length,
+      'Tile Layer': 0,
+      Builder: 0,
+      Contractor: 0,
+      Architect: 0,
       Others: 0
     }
-    if (contacts.length > 0) {
-      const actualAll = contacts.length
-      const actualTL = contacts.filter(c => c.type === 'Tile Layer' || c.category === 'Tile Layer').length
-      const actualBld = contacts.filter(c => c.type === 'Builder' || c.category === 'Builder').length
-      const actualCont = contacts.filter(c => c.type === 'Contractor' || c.category === 'Contractor').length
-      const actualArch = contacts.filter(c => c.type === 'Architect' || c.category === 'Architect').length
-      
-      counts.All = Math.max(124, actualAll)
-      counts['Tile Layer'] = Math.max(78, actualTL)
-      counts.Builder = Math.max(28, actualBld)
-      counts.Contractor = Math.max(12, actualCont)
-      counts.Architect = Math.max(6, actualArch)
-    }
+
+    contacts.forEach(c => {
+      const type = c.type || c.category
+      if (type === 'Tile Layer') counts['Tile Layer']++
+      else if (type === 'Builder') counts.Builder++
+      else if (type === 'Contractor') counts.Contractor++
+      else if (type === 'Architect') counts.Architect++
+      else counts.Others++
+    })
+
     return counts
   }, [contacts])
 
