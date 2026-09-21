@@ -1,0 +1,493 @@
+[
+  {
+    "id": "CNT-001",
+    "name": "Murugan",
+    "type": "Tile Layer",
+    "category": "Tile Layer",
+    "phone": "98765 43210",
+    "whatsapp": "98765 43210",
+    "email": "murugan.tiles@gmail.com",
+    "location": "Tiruchengode",
+    "address": "Near Bus Stand, Tiruchengode",
+    "experience": "10+ years",
+    "specialization": "Tiles, Bathroom, Kitchen",
+    "quote": "Quality work, long term partnership",
+    "notes": "Reliable and good quality work. Regular customer referrals.",
+    "status": "Active",
+    "totalReferrals": 12,
+    "totalsales": 845000,
+    "totalSales": 845000,
+    "totalCommission": 42250,
+    "bonus": 5000,
+    "avatarColor": "bg-purple-500 text-white",
+    "referrals": [
+      {
+        "id": "REF-001",
+        "date": "12 Sep 2026",
+        "customerName": "Kumar Residence",
+        "saleValue": 75000,
+        "commissionPercent": 5,
+        "commissionAmount": 3750,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-002",
+        "date": "28 Aug 2026",
+        "customerName": "Sri Balaji Builders",
+        "saleValue": 120000,
+        "commissionPercent": 5,
+        "commissionAmount": 6000,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-003",
+        "date": "15 Aug 2026",
+        "customerName": "Anand Renovation",
+        "saleValue": 85000,
+        "commissionPercent": 5,
+        "commissionAmount": 4250,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-004",
+        "date": "02 Aug 2026",
+        "customerName": "Vignesh House",
+        "saleValue": 60000,
+        "commissionPercent": 5,
+        "commissionAmount": 3000,
+        "status": "Pending"
+      },
+      {
+        "id": "REF-005",
+        "date": "18 Jul 2026",
+        "customerName": "Ravi Construction",
+        "saleValue": 210000,
+        "commissionPercent": 5,
+        "commissionAmount": 10500,
+        "status": "Paid"
+      }
+    ],
+    "commissionHistory": [
+      {
+        "id": "PAY-001",
+        "date": "10 Sep 2026",
+        "voucher": "VCH-8801",
+        "amount": 25000,
+        "mode": "Bank RTGS",
+        "status": "Paid"
+      },
+      {
+        "id": "PAY-002",
+        "date": "15 Aug 2026",
+        "voucher": "VCH-8710",
+        "amount": 10000,
+        "mode": "Cash",
+        "status": "Paid"
+      },
+      {
+        "id": "PAY-003",
+        "date": "20 Jul 2026",
+        "voucher": "VCH-8640",
+        "amount": 7250,
+        "mode": "UPI / GPay",
+        "status": "Paid"
+      }
+    ],
+    "bonusHistory": [
+      {
+        "id": "BNS-001",
+        "date": "01 Sep 2026",
+        "title": "Top Performer Milestone Bonus",
+        "amount": 5000,
+        "status": "Paid"
+      }
+    ],
+    "documents": [
+      {
+        "id": "DOC-001",
+        "title": "Aadhaar Card Copy",
+        "type": "PDF",
+        "date": "15 Jan 2025"
+      },
+      {
+        "id": "DOC-002",
+        "title": "Tile Fixing Trade Certificate",
+        "type": "PDF",
+        "date": "20 Jun 2025"
+      }
+    ]
+  },
+  {
+    "id": "CNT-002",
+    "name": "Ramesh Kumar",
+    "type": "Builder",
+    "category": "Builder",
+    "phone": "97890 12345",
+    "whatsapp": "97890 12345",
+    "email": "ramesh.builders@gmail.com",
+    "location": "Namakkal",
+    "address": "Mohanur Road, Namakkal",
+    "experience": "12+ years",
+    "specialization": "Commercial & Villa Construction",
+    "quote": "Premium tiling for residential villas",
+    "notes": "Leading luxury home builder in Namakkal region. Bulk buyer.",
+    "status": "Active",
+    "totalReferrals": 8,
+    "totalSales": 1260000,
+    "totalCommission": 63000,
+    "bonus": 10000,
+    "avatarColor": "bg-blue-600 text-white",
+    "referrals": [
+      {
+        "id": "REF-006",
+        "date": "08 Sep 2026",
+        "customerName": "Senthil Villa",
+        "saleValue": 340000,
+        "commissionPercent": 5,
+        "commissionAmount": 17000,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-007",
+        "date": "22 Aug 2026",
+        "customerName": "Kannan Residency",
+        "saleValue": 420000,
+        "commissionPercent": 5,
+        "commissionAmount": 21000,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-008",
+        "date": "10 Aug 2026",
+        "customerName": "Green Avenue Flat 402",
+        "saleValue": 250000,
+        "commissionPercent": 5,
+        "commissionAmount": 12500,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-009",
+        "date": "19 Jul 2026",
+        "customerName": "Gokul Complex",
+        "saleValue": 250000,
+        "commissionPercent": 5,
+        "commissionAmount": 12500,
+        "status": "Pending"
+      }
+    ],
+    "commissionHistory": [
+      {
+        "id": "PAY-004",
+        "date": "10 Sep 2026",
+        "voucher": "VCH-8802",
+        "amount": 38000,
+        "mode": "Bank RTGS",
+        "status": "Paid"
+      },
+      {
+        "id": "PAY-005",
+        "date": "15 Aug 2026",
+        "voucher": "VCH-8712",
+        "amount": 12500,
+        "mode": "Bank NEFT",
+        "status": "Paid"
+      }
+    ],
+    "bonusHistory": [
+      {
+        "id": "BNS-002",
+        "date": "15 Aug 2026",
+        "title": "Independence Mega Order Bonus",
+        "amount": 10000,
+        "status": "Paid"
+      }
+    ],
+    "documents": [
+      {
+        "id": "DOC-003",
+        "title": "GST Registration Certificate",
+        "type": "PDF",
+        "date": "01 Mar 2025"
+      }
+    ]
+  },
+  {
+    "id": "CNT-003",
+    "name": "Selvam",
+    "type": "Tile Layer",
+    "category": "Tile Layer",
+    "phone": "98432 56789",
+    "whatsapp": "98432 56789",
+    "email": "selvam.tiling@gmail.com",
+    "location": "Erode",
+    "address": "Perundurai Road, Erode",
+    "experience": "8+ years",
+    "specialization": "Floor & Elevation Tiles",
+    "quote": "Fast and precision tile fixing",
+    "notes": "Tile layer team with 6 workers. Specializes in 600x1200 PGVT.",
+    "status": "Active",
+    "totalReferrals": 5,
+    "totalSales": 325000,
+    "totalCommission": 16250,
+    "bonus": 2000,
+    "avatarColor": "bg-slate-500 text-white",
+    "referrals": [
+      {
+        "id": "REF-010",
+        "date": "01 Sep 2026",
+        "customerName": "Prakash House",
+        "saleValue": 95000,
+        "commissionPercent": 5,
+        "commissionAmount": 4750,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-011",
+        "date": "14 Aug 2026",
+        "customerName": "Saravanan Duplex",
+        "saleValue": 110000,
+        "commissionPercent": 5,
+        "commissionAmount": 5500,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-012",
+        "date": "29 Jul 2026",
+        "customerName": "Devi Textiles Office",
+        "saleValue": 120000,
+        "commissionPercent": 5,
+        "commissionAmount": 6000,
+        "status": "Paid"
+      }
+    ],
+    "commissionHistory": [
+      {
+        "id": "PAY-006",
+        "date": "05 Sep 2026",
+        "voucher": "VCH-8790",
+        "amount": 10250,
+        "mode": "UPI / PhonePe",
+        "status": "Paid"
+      }
+    ],
+    "bonusHistory": [
+      {
+        "id": "BNS-003",
+        "date": "01 Sep 2026",
+        "title": "On-Time Completion Incentive",
+        "amount": 2000,
+        "status": "Paid"
+      }
+    ],
+    "documents": []
+  },
+  {
+    "id": "CNT-004",
+    "name": "Karthik",
+    "type": "Contractor",
+    "category": "Contractor",
+    "phone": "99654 32109",
+    "whatsapp": "99654 32109",
+    "email": "karthik.civil@gmail.com",
+    "location": "Salem",
+    "address": "Junction Main Road, Salem",
+    "experience": "6+ years",
+    "specialization": "Civil Contracting & Remodeling",
+    "quote": "Turnkey civil contracting projects",
+    "notes": "Handles government and private civil renovations in Salem district.",
+    "status": "Active",
+    "totalReferrals": 3,
+    "totalSales": 540000,
+    "totalCommission": 27000,
+    "bonus": 0,
+    "avatarColor": "bg-indigo-600 text-white",
+    "referrals": [
+      {
+        "id": "REF-013",
+        "date": "05 Sep 2026",
+        "customerName": "Metro Hospital Staff Quarters",
+        "saleValue": 280000,
+        "commissionPercent": 5,
+        "commissionAmount": 14000,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-014",
+        "date": "18 Aug 2026",
+        "customerName": "Sri Ram Clinic",
+        "saleValue": 160000,
+        "commissionPercent": 5,
+        "commissionAmount": 8000,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-015",
+        "date": "03 Jul 2026",
+        "customerName": "Deepak Apartment",
+        "saleValue": 100000,
+        "commissionPercent": 5,
+        "commissionAmount": 5000,
+        "status": "Paid"
+      }
+    ],
+    "commissionHistory": [
+      {
+        "id": "PAY-007",
+        "date": "08 Sep 2026",
+        "voucher": "VCH-8798",
+        "amount": 22000,
+        "mode": "Bank NEFT",
+        "status": "Paid"
+      }
+    ],
+    "bonusHistory": [],
+    "documents": []
+  },
+  {
+    "id": "CNT-005",
+    "name": "Prabhu",
+    "type": "Builder",
+    "category": "Builder",
+    "phone": "97987 65432",
+    "whatsapp": "97987 65432",
+    "email": "prabhu.builders@gmail.com",
+    "location": "Tiruchengode",
+    "address": "Sankari Road, Tiruchengode",
+    "experience": "9+ years",
+    "specialization": "Individual Homes & Gated Communities",
+    "quote": "Consistent quality materials only",
+    "notes": "Reputed local builder with ongoing residential layouts.",
+    "status": "Active",
+    "totalReferrals": 4,
+    "totalSales": 630000,
+    "totalCommission": 31500,
+    "bonus": 5000,
+    "avatarColor": "bg-violet-400 text-white",
+    "referrals": [
+      {
+        "id": "REF-016",
+        "date": "11 Sep 2026",
+        "customerName": "Vasanth Nagar Plot 14",
+        "saleValue": 190000,
+        "commissionPercent": 5,
+        "commissionAmount": 9500,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-017",
+        "date": "25 Aug 2026",
+        "customerName": "Shree Towers Unit 3A",
+        "saleValue": 180000,
+        "commissionPercent": 5,
+        "commissionAmount": 9000,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-018",
+        "date": "09 Aug 2026",
+        "customerName": "Karpagam Illam",
+        "saleValue": 130000,
+        "commissionPercent": 5,
+        "commissionAmount": 6500,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-019",
+        "date": "20 Jul 2026",
+        "customerName": "Mani Farm House",
+        "saleValue": 130000,
+        "commissionPercent": 5,
+        "commissionAmount": 6500,
+        "status": "Paid"
+      }
+    ],
+    "commissionHistory": [
+      {
+        "id": "PAY-008",
+        "date": "12 Sep 2026",
+        "voucher": "VCH-8815",
+        "amount": 25000,
+        "mode": "Bank RTGS",
+        "status": "Paid"
+      }
+    ],
+    "bonusHistory": [
+      {
+        "id": "BNS-004",
+        "date": "01 Aug 2026",
+        "title": "Customer Delight Referral Bonus",
+        "amount": 5000,
+        "status": "Paid"
+      }
+    ],
+    "documents": []
+  },
+  {
+    "id": "CNT-006",
+    "name": "Er. Anand B.E.",
+    "type": "Architect",
+    "category": "Architect",
+    "phone": "94432 19876",
+    "whatsapp": "94432 19876",
+    "email": "anand.architect@gmail.com",
+    "location": "Tiruchengode",
+    "address": "Paramathi Velur Road, Tiruchengode",
+    "experience": "14+ years",
+    "specialization": "Architectural Design & Modern Elevations",
+    "quote": "Aesthetic design meets functional living",
+    "notes": "Regular residential projects engineer. Recommends premium living room & elevation tiles.",
+    "status": "Active",
+    "totalReferrals": 6,
+    "totalSales": 920000,
+    "totalCommission": 46000,
+    "bonus": 7500,
+    "avatarColor": "bg-teal-600 text-white",
+    "referrals": [
+      {
+        "id": "REF-020",
+        "date": "07 Sep 2026",
+        "customerName": "Kavitha Residence",
+        "saleValue": 180000,
+        "commissionPercent": 5,
+        "commissionAmount": 9000,
+        "status": "Paid"
+      },
+      {
+        "id": "REF-021",
+        "date": "19 Aug 2026",
+        "customerName": "Dr. Mohan Hospital Ext",
+        "saleValue": 260000,
+        "commissionPercent": 5,
+        "commissionAmount": 13000,
+        "status": "Paid"
+      }
+    ],
+    "commissionHistory": [
+      {
+        "id": "PAY-009",
+        "date": "10 Sep 2026",
+        "voucher": "VCH-8809",
+        "amount": 22000,
+        "mode": "Bank RTGS",
+        "status": "Paid"
+      }
+    ],
+    "bonusHistory": [
+      {
+        "id": "BNS-005",
+        "date": "05 Sep 2026",
+        "title": "Architect Design Advisory Bonus",
+        "amount": 7500,
+        "status": "Paid"
+      }
+    ],
+    "documents": [
+      {
+        "id": "DOC-004",
+        "title": "Council of Architecture License",
+        "type": "PDF",
+        "date": "10 Feb 2024"
+      }
+    ]
+  }
+]

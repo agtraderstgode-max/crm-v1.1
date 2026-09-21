@@ -54,6 +54,36 @@ CREATE TABLE IF NOT EXISTS public.customers (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 2B. CONTACTS TABLE (Tile Layers, Builders, Contractors, Architects, Suppliers, Customers)
+CREATE TABLE IF NOT EXISTS public.contacts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT DEFAULT 'Tile Layer',
+    category TEXT DEFAULT 'Tile Layer',
+    phone TEXT NOT NULL,
+    whatsapp TEXT,
+    email TEXT,
+    company TEXT,
+    location TEXT,
+    address TEXT,
+    experience TEXT,
+    specialization TEXT,
+    quote TEXT,
+    notes TEXT,
+    status TEXT DEFAULT 'Active',
+    totalreferrals INTEGER DEFAULT 0,
+    totalsales NUMERIC DEFAULT 0,
+    totalcommission NUMERIC DEFAULT 0,
+    bonus NUMERIC DEFAULT 0,
+    avatarcolor TEXT,
+    referrals JSONB DEFAULT '[]'::jsonb,
+    commissionhistory JSONB DEFAULT '[]'::jsonb,
+    bonushistory JSONB DEFAULT '[]'::jsonb,
+    documents JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 3. ORDERS TABLE
 CREATE TABLE IF NOT EXISTS public.orders (
     id TEXT PRIMARY KEY,
@@ -213,6 +243,7 @@ ON CONFLICT (key) DO NOTHING;
 -- or grant full access to authenticated & service_role
 ALTER TABLE public.leads DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.contacts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories DISABLE ROW LEVEL SECURITY;

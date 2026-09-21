@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { handleAiChatRequest } from './ai/aiOrchestrator'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const jsonResponse = (data, status = 200) => {
@@ -133,6 +134,61 @@ const mapCustomerToSupabase = (c) => ({
   stage: c.stage || null,
   budget: c.budget || null,
   date: c.date || null
+})
+
+const mapContactFromSupabase = (c) => ({
+  id: c.id,
+  name: c.name || '',
+  type: c.type || c.category || 'Tile Layer',
+  category: c.category || c.type || 'Tile Layer',
+  phone: c.phone || '',
+  whatsapp: c.whatsapp || '',
+  email: c.email || '',
+  company: c.company || '',
+  location: c.location || '',
+  address: c.address || '',
+  experience: c.experience || '',
+  specialization: c.specialization || '',
+  quote: c.quote || '',
+  notes: c.notes || '',
+  status: c.status || 'Active',
+  totalReferrals: Number(c.totalreferrals ?? c.totalReferrals ?? (c.referrals?.length || 0)),
+  totalSales: Number(c.totalsales ?? c.totalSales ?? 0),
+  totalCommission: Number(c.totalcommission ?? c.totalCommission ?? 0),
+  bonus: Number(c.bonus ?? 0),
+  avatarColor: c.avatarcolor || c.avatarColor || 'bg-purple-500 text-white',
+  referrals: Array.isArray(c.referrals) ? c.referrals : [],
+  commissionHistory: Array.isArray(c.commissionhistory ?? c.commissionHistory) ? (c.commissionhistory ?? c.commissionHistory) : [],
+  bonusHistory: Array.isArray(c.bonushistory ?? c.bonusHistory) ? (c.bonushistory ?? c.bonusHistory) : [],
+  documents: Array.isArray(c.documents) ? c.documents : [],
+  created_at: c.created_at || c.createdAt || ''
+})
+
+const mapContactToSupabase = (c) => ({
+  id: c.id,
+  name: c.name,
+  type: c.type || c.category || 'Tile Layer',
+  category: c.category || c.type || 'Tile Layer',
+  phone: c.phone || '',
+  whatsapp: c.whatsapp || '',
+  email: c.email || '',
+  company: c.company || '',
+  location: c.location || '',
+  address: c.address || '',
+  experience: c.experience || '',
+  specialization: c.specialization || '',
+  quote: c.quote || '',
+  notes: c.notes || '',
+  status: c.status || 'Active',
+  totalreferrals: Number(c.totalReferrals ?? c.totalreferrals ?? (c.referrals?.length || 0)),
+  totalsales: Number(c.totalSales ?? c.totalsales ?? 0),
+  totalcommission: Number(c.totalCommission ?? c.totalcommission ?? 0),
+  bonus: Number(c.bonus ?? 0),
+  avatarcolor: c.avatarColor || c.avatarcolor || 'bg-purple-500 text-white',
+  referrals: Array.isArray(c.referrals) ? c.referrals : [],
+  commissionhistory: Array.isArray(c.commissionHistory ?? c.commissionhistory) ? (c.commissionHistory ?? c.commissionhistory) : [],
+  bonushistory: Array.isArray(c.bonusHistory ?? c.bonushistory) ? (c.bonusHistory ?? c.bonushistory) : [],
+  documents: Array.isArray(c.documents) ? c.documents : []
 })
 
 const mapOrderFromSupabase = (o) => {
@@ -483,6 +539,59 @@ export async function handleApiRequest(url, options = {}) {
     }
   }
 
+  // ─── /api/contacts ─────────────────────────────────────────────────────────
+  if (pathname === '/api/contacts' && method === 'GET') {
+    try {
+      const { data, error } = await supabase.from('contacts').select('*').order('id', { ascending: false })
+      if (error) {
+        console.warn('[apiAdapter] contacts fetch warning:', error.message)
+        return jsonResponse([])
+      }
+      return jsonResponse((data || []).map(mapContactFromSupabase))
+    } catch {
+      return jsonResponse([])
+    }
+  }
+
+  if (pathname === '/api/contacts' && method === 'POST') {
+    try {
+      const { data: all } = await supabase.from('contacts').select('id')
+      const nums = (all || []).map(c => {
+        const match = c.id?.match(/^CNT-(\d+)$/i)
+        return match ? parseInt(match[1]) : 0
+      })
+      const newContact = {
+        ...body,
+        id: body.id || `CNT-${String(Math.max(...nums, 0) + 1).padStart(3, '0')}`
+      }
+      const { error } = await supabase.from('contacts').insert([mapContactToSupabase(newContact)])
+      if (error) console.warn('[apiAdapter] contacts insert warning:', error.message)
+      return jsonResponse(newContact, 201)
+    } catch {
+      return jsonResponse(body, 201)
+    }
+  }
+
+  const contactIdMatch = pathname.match(/^\/api\/contacts\/([^/]+)$/)
+  if (contactIdMatch) {
+    const id = contactIdMatch[1]
+    if (method === 'PUT') {
+      const updated = { ...body, id }
+      try {
+        const { error } = await supabase.from('contacts').update(mapContactToSupabase(updated)).eq('id', id)
+        if (error) console.warn('[apiAdapter] contacts update warning:', error.message)
+      } catch {}
+      return jsonResponse(updated)
+    }
+    if (method === 'DELETE') {
+      try {
+        const { error } = await supabase.from('contacts').delete().eq('id', id)
+        if (error) console.warn('[apiAdapter] contacts delete warning:', error.message)
+      } catch {}
+      return jsonResponse({ success: true, id })
+    }
+  }
+
   // ─── /api/orders ───────────────────────────────────────────────────────────
   if (pathname === '/api/orders' && method === 'GET') {
     const { data, error } = await supabase.from('orders').select('*').order('date', { ascending: false })
@@ -615,6 +724,50 @@ export async function handleApiRequest(url, options = {}) {
     }
     await supabase.from('chat_messages').insert([newMsg])
     return jsonResponse(newMsg, 201)
+  }
+
+  // ─── /api/ai/chat ──────────────────────────────────────────────────────────
+  if (pathname === '/api/ai/chat' && method === 'POST') {
+    try {
+      const { messages, systemPrompt, context, provider, model } = body || {}
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        return jsonResponse({
+          success: false,
+          error: 'Invalid request: "messages" array is required.'
+        }, 400)
+      }
+
+      let parsedHeaders = {}
+      if (init.headers) {
+        if (typeof init.headers.forEach === 'function') {
+          init.headers.forEach((val, key) => {
+            parsedHeaders[key.toLowerCase()] = val
+          })
+        } else {
+          parsedHeaders = { ...init.headers }
+        }
+      }
+
+      const result = await handleAiChatRequest({
+        messages,
+        systemPrompt,
+        context,
+        provider,
+        model,
+        headers: parsedHeaders,
+        body
+      })
+
+      const status = result.success ? 200 : (result.statusCode || (result.code === 'NO_KEYS_AVAILABLE' ? 400 : 502))
+      return jsonResponse(result, status)
+    } catch (err) {
+      console.error('❌ [apiAdapter] /api/ai/chat error:', err)
+      return jsonResponse({
+        success: false,
+        error: err.message || 'Internal error in client-side AI chat adapter.',
+        code: 'CLIENT_ADAPTER_ERROR'
+      }, 500)
+    }
   }
 
   // Fallback 404

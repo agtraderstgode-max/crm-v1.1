@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 
 import multer from 'multer'
 import { GoogleGenAI } from '@google/genai'
+import { handleAiChatRequest } from './src/lib/ai/aiOrchestrator.js'
 
 // Load .env file if present
 try {
@@ -32,6 +33,7 @@ const DATA_DIR = path.join(__dirname, 'data')
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json')
 const ORDERS_FILE = path.join(DATA_DIR, 'orders.json')
 const CUSTOMERS_FILE = path.join(DATA_DIR, 'customers.json')
+const CONTACTS_FILE = path.join(DATA_DIR, 'contacts.json')
 const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json')
 const INVOICES_FILE = path.join(DATA_DIR, 'invoices.json')
 const CATEGORIES_FILE = path.join(DATA_DIR, 'categories.json')
@@ -89,6 +91,9 @@ if (!fs.existsSync(ORDERS_FILE)) {
 }
 if (!fs.existsSync(CUSTOMERS_FILE)) {
   fs.writeFileSync(CUSTOMERS_FILE, JSON.stringify(INITIAL_CUSTOMERS, null, 2), 'utf-8')
+}
+if (!fs.existsSync(CONTACTS_FILE)) {
+  fs.writeFileSync(CONTACTS_FILE, JSON.stringify([], null, 2), 'utf-8')
 }
 if (!fs.existsSync(INVOICES_FILE)) {
   fs.writeFileSync(INVOICES_FILE, JSON.stringify([], null, 2), 'utf-8')
@@ -163,6 +168,15 @@ const getLocalCustomers = () => {
 
 const saveLocalCustomers = (customers) => {
   fs.writeFileSync(CUSTOMERS_FILE, JSON.stringify(customers, null, 2), 'utf-8')
+}
+
+const getLocalContacts = () => {
+  try { return JSON.parse(fs.readFileSync(CONTACTS_FILE, 'utf-8')) }
+  catch { return [] }
+}
+
+const saveLocalContacts = (contacts) => {
+  fs.writeFileSync(CONTACTS_FILE, JSON.stringify(contacts, null, 2), 'utf-8')
 }
 
 const getLocalProducts = () => {
@@ -270,6 +284,61 @@ const mapFromPostgres = (lead) => ({
   history: lead.history || []
 })
 
+const mapContactToPostgres = (c) => ({
+  id: c.id,
+  name: c.name,
+  type: c.type || c.category || 'Tile Layer',
+  category: c.category || c.type || 'Tile Layer',
+  phone: c.phone || '',
+  whatsapp: c.whatsapp || '',
+  email: c.email || '',
+  company: c.company || '',
+  location: c.location || '',
+  address: c.address || '',
+  experience: c.experience || '',
+  specialization: c.specialization || '',
+  quote: c.quote || '',
+  notes: c.notes || '',
+  status: c.status || 'Active',
+  totalreferrals: Number(c.totalReferrals ?? c.totalreferrals ?? (c.referrals?.length || 0)),
+  totalsales: Number(c.totalSales ?? c.totalsales ?? 0),
+  totalcommission: Number(c.totalCommission ?? c.totalcommission ?? 0),
+  bonus: Number(c.bonus ?? 0),
+  avatarcolor: c.avatarColor || c.avatarcolor || 'bg-purple-500 text-white',
+  referrals: Array.isArray(c.referrals) ? c.referrals : [],
+  commissionhistory: Array.isArray(c.commissionHistory ?? c.commissionhistory) ? (c.commissionHistory ?? c.commissionhistory) : [],
+  bonushistory: Array.isArray(c.bonusHistory ?? c.bonushistory) ? (c.bonusHistory ?? c.bonushistory) : [],
+  documents: Array.isArray(c.documents) ? c.documents : []
+})
+
+const mapContactFromPostgres = (c) => ({
+  id: c.id,
+  name: c.name || '',
+  type: c.type || c.category || 'Tile Layer',
+  category: c.category || c.type || 'Tile Layer',
+  phone: c.phone || '',
+  whatsapp: c.whatsapp || '',
+  email: c.email || '',
+  company: c.company || '',
+  location: c.location || '',
+  address: c.address || '',
+  experience: c.experience || '',
+  specialization: c.specialization || '',
+  quote: c.quote || '',
+  notes: c.notes || '',
+  status: c.status || 'Active',
+  totalReferrals: Number(c.totalreferrals ?? c.totalReferrals ?? (c.referrals?.length || 0)),
+  totalSales: Number(c.totalsales ?? c.totalSales ?? 0),
+  totalCommission: Number(c.totalcommission ?? c.totalCommission ?? 0),
+  bonus: Number(c.bonus ?? 0),
+  avatarColor: c.avatarcolor || c.avatarColor || 'bg-purple-500 text-white',
+  referrals: Array.isArray(c.referrals) ? c.referrals : [],
+  commissionHistory: Array.isArray(c.commissionhistory ?? c.commissionHistory) ? (c.commissionhistory ?? c.commissionHistory) : [],
+  bonusHistory: Array.isArray(c.bonushistory ?? c.bonusHistory) ? (c.bonushistory ?? c.bonusHistory) : [],
+  documents: Array.isArray(c.documents) ? c.documents : [],
+  created_at: c.created_at || c.createdAt || ''
+})
+
 // ─── Offline-First Auto-Sync Engine ──────────────────────────────────────────
 const getSyncQueue = () => {
   try { return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf-8')) } catch { return [] }
@@ -290,6 +359,8 @@ const syncRecordToSupabase = async (table, action, record) => {
   let row = record
   if (table === 'leads') {
     row = mapToPostgres(record, true)
+  } else if (table === 'contacts') {
+    row = mapContactToPostgres(record)
   }
   const { error } = await supabase.from(table).upsert([row])
   if (error) throw error
@@ -349,6 +420,18 @@ const refreshLocalFromCloud = async () => {
     const mapped = data.map(mapFromPostgres)
     saveLocalLeads(mapped)
     console.log(`☁️  Local cache refreshed from Supabase (${mapped.length} leads)`)
+
+    try {
+      const { data: cData, error: cErr } = await supabase.from('contacts').select('*').order('id', { ascending: true })
+      if (!cErr && cData && cData.length > 0) {
+        const mappedContacts = cData.map(mapContactFromPostgres)
+        saveLocalContacts(mappedContacts)
+        console.log(`☁️  Local contacts refreshed from Supabase (${mappedContacts.length} contacts)`)
+      }
+    } catch (cEx) {
+      // Supabase contacts table might not exist yet
+    }
+
     // Also process any pending offline queue items
     processSyncQueue()
   } catch (err) {
@@ -524,6 +607,70 @@ app.delete('/api/customers/:id', (req, res) => {
   res.json({ success: true, id })
   console.log(`⚡ Deleted customer ${id} locally`)
   enqueueSync('customers', 'delete', { id })
+})
+
+// ─── GET /api/contacts ───────────────────────────────────────────────────────────
+app.get('/api/contacts', async (req, res) => {
+  if (USE_CLOUD) {
+    try {
+      const { data, error } = await supabase.from('contacts').select('*').order('id', { ascending: true })
+      if (error) throw error
+      const mapped = data.map(mapContactFromPostgres)
+      saveLocalContacts(mapped)
+      return res.json(mapped)
+    } catch (err) {
+      console.warn('⚠️  Supabase read contacts failed, serving local:', err.message)
+      return res.json(getLocalContacts())
+    }
+  }
+  res.json(getLocalContacts())
+})
+
+// ─── POST /api/contacts ──────────────────────────────────────────────────────────
+app.post('/api/contacts', (req, res) => {
+  const newContact = req.body
+  const localContacts = getLocalContacts()
+
+  if (!newContact.id) {
+    const nums = localContacts.map(c => {
+      const match = c.id?.match(/^CNT-(\d+)$/i)
+      return match ? parseInt(match[1]) : 0
+    })
+    newContact.id = `CNT-${String(Math.max(...nums, 0) + 1).padStart(3, '0')}`
+  }
+
+  localContacts.unshift(newContact)
+  saveLocalContacts(localContacts)
+  res.status(201).json(newContact)
+  console.log(`⚡ Saved contact ${newContact.id} locally`)
+  enqueueSync('contacts', 'upsert', newContact)
+})
+
+// ─── PUT /api/contacts/:id ────────────────────────────────────────────────────────
+app.put('/api/contacts/:id', (req, res) => {
+  const { id } = req.params
+  const updatedContact = req.body
+  const localContacts = getLocalContacts()
+  const idx = localContacts.findIndex(c => c.id === id)
+  if (idx !== -1) {
+    localContacts[idx] = updatedContact
+  } else {
+    localContacts.unshift(updatedContact)
+  }
+  saveLocalContacts(localContacts)
+  res.json(updatedContact)
+  console.log(`⚡ Updated contact ${id} locally`)
+  enqueueSync('contacts', 'upsert', updatedContact)
+})
+
+// ─── DELETE /api/contacts/:id ───────────────────────────────────────────────────
+app.delete('/api/contacts/:id', (req, res) => {
+  const { id } = req.params
+  const localContacts = getLocalContacts()
+  saveLocalContacts(localContacts.filter(c => c.id !== id))
+  res.json({ success: true, id })
+  console.log(`⚡ Deleted contact ${id} locally`)
+  enqueueSync('contacts', 'delete', { id })
 })
 
 // ─── GET /api/products ───────────────────────────────────────────────────────────
@@ -1375,6 +1522,44 @@ app.post('/api/chat/messages', (req, res) => {
   }
   saveChatMessages(messages)
   res.json({ success: true, message: newMessage })
+})
+
+// ─── AG AI Assistant Endpoint ─────────────────────────────────────────────────
+app.post('/api/ai/chat', async (req, res) => {
+  try {
+    const { messages, systemPrompt, context, provider, model } = req.body || {}
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request: "messages" array is required.'
+      })
+    }
+
+    const result = await handleAiChatRequest({
+      messages,
+      systemPrompt,
+      context,
+      provider,
+      model,
+      headers: req.headers,
+      body: req.body
+    })
+
+    if (!result.success) {
+      const status = result.statusCode || (result.code === 'NO_KEYS_AVAILABLE' ? 400 : 502)
+      return res.status(status).json(result)
+    }
+
+    res.json(result)
+  } catch (err) {
+    console.error('❌ [AG AI] Chat endpoint error:', err)
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Internal server error in AI chat service.',
+      code: 'SERVER_ERROR'
+    })
+  }
 })
 
 // ─── Sales Returns Endpoints ──────────────────────────────────────────────────

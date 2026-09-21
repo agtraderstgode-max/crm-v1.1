@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Bell, Search } from 'lucide-react'
+import { AiChatWidget } from '../ai/AiChatWidget'
 
 export function AppLayout() {
   return (
@@ -42,6 +43,9 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Global Floating AG AI Assistant Widget */}
+      <AiChatWidget />
     </div>
   )
 }

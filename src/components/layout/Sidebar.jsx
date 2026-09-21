@@ -25,6 +25,7 @@ import {
   Megaphone,
   Share2,
   ScrollText,
+  Contact,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -43,6 +44,7 @@ const NAV_GROUPS = [
       { label: 'Enquiry - Lead', icon: TrendingUp,    to: '/leads' },
       { label: 'Follow-ups',     icon: CalendarCheck,  to: '/followups' },
       { label: 'Customers',      icon: Users,          to: '/customers' },
+      { label: 'Contacts',       icon: Contact,        to: '/contacts' },
     ],
   },
   {

@@ -1,10 +1,12 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useRouteError, Link } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
+import { AlertTriangle } from 'lucide-react'
 
 // Pages — each module has its own page
 import { DashboardPage }   from '@/modules/dashboard/pages/DashboardPage'
 import { AnalysisPage }    from '@/modules/analysis/pages/AnalysisPage'
 import { CustomersPage }   from '@/modules/crm/customers/pages/CustomersPage'
+import { ContactsPage }    from '@/modules/crm/contacts/pages/ContactsPage'
 import { LeadsPage }       from '@/modules/crm/leads/pages/LeadsPage'
 import { FollowupsPage }   from '@/modules/crm/followups/pages/FollowupsPage'
 import { BuyingNowPage }   from '@/modules/crm/buyingnow/pages/BuyingNowPage'
@@ -28,6 +30,7 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <AppLayout />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       // Default redirect to dashboard
       { index: true, element: <Navigate to="/dashboard" replace /> },
@@ -41,6 +44,7 @@ export const router = createBrowserRouter([
 
       // CRM module
       { path: 'customers',  element: <CustomersPage /> },
+      { path: 'contacts',   element: <ContactsPage /> },
       { path: 'leads',      element: <LeadsPage /> },
       { path: 'followups',   element: <FollowupsPage /> },
       { path: 'buying-now',  element: <BuyingNowPage /> },
@@ -65,9 +69,47 @@ export const router = createBrowserRouter([
       // Operations module
       { path: 'delivery',   element: <ComingSoon title="Delivery" /> },
       { path: 'staff',      element: <StaffPage /> },
+
+      // Aliases & fallback
+      { path: 'quotation-planner', element: <Navigate to="/quotations" replace /> },
+      { path: '*', element: <Navigate to="/dashboard" replace /> },
     ],
   },
 ])
+
+// Custom graceful Error Boundary for React Router
+function RouteErrorBoundary() {
+  const error = useRouteError()
+  console.error('Route error captured:', error)
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+      <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-8 text-center">
+        <div className="w-14 h-14 mx-auto rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-500 mb-4">
+          <AlertTriangle className="w-7 h-7" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-800 mb-2">Page Not Found or Encountered Error</h2>
+        <p className="text-sm text-slate-500 mb-6">
+          {error?.statusText || error?.message || 'The requested page could not be loaded.'}
+        </p>
+        <div className="flex gap-3 justify-center">
+          <Link
+            to="/dashboard"
+            className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+          >
+            Go to Dashboard
+          </Link>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-5 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold transition-colors cursor-pointer"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // Temporary placeholder for future modules
 function ComingSoon({ title }) {

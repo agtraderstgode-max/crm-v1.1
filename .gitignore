@@ -24,7 +24,8 @@ dist-ssr
 *.sw?
 
 # Local database file
-data/
+data/*
+!data/contacts.json
 data_backup_before_launch/
 
 # Environment files
