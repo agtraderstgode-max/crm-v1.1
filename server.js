@@ -231,6 +231,20 @@ const saveLocalStaff = (staff) => {
 
 // ─── Supabase Mappers ─────────────────────────────────────────────────────────
 const mapToPostgres = (lead, includeHistory = true) => {
+  const history = Array.isArray(lead.history) ? [...lead.history] : []
+  if (lead.referredContactId || lead.referredByName) {
+    const existingIdx = history.findIndex(h => h && h.type === 'REFERRAL_MAPPING')
+    const refEntry = {
+      type: 'REFERRAL_MAPPING',
+      contactId: lead.referredContactId || '',
+      contactName: lead.referredByName || '',
+      contactPhone: lead.referredByPhone || '',
+      contactType: lead.referredByType || ''
+    }
+    if (existingIdx !== -1) history[existingIdx] = refEntry
+    else history.unshift(refEntry)
+  }
+
   const row = {
     id: lead.id,
     date: lead.date || null,
@@ -255,34 +269,43 @@ const mapToPostgres = (lead, includeHistory = true) => {
     attendedby: lead.attendedBy || null,
   }
   // Only add history if column is expected to exist
-  if (includeHistory) row.history = lead.history || []
+  if (includeHistory) row.history = history
   return row
 }
 
-const mapFromPostgres = (lead) => ({
-  id: lead.id,
-  date: lead.date || '',
-  name: lead.name,
-  phone: lead.phone,
-  location: lead.location || '',
-  lat: lead.lat || '',
-  lng: lead.lng || '',
-  km: lead.km || '',
-  source: lead.source || '',
-  size: lead.size || '',
-  budget: lead.budget || '',
-  houseType: lead.housetype || '',
-  custType: lead.custtype || '',
-  stage: lead.stage || '',
-  expectedAmt: lead.expectedamt || '',
-  priority: lead.priority || 'Medium',
-  status: lead.status || 'New Entry',
-  nextDate: lead.nextdate || '',
-  withinDays: lead.withindays || '',
-  remarks: lead.remarks || '',
-  attendedBy: lead.attendedby || '',
-  history: lead.history || []
-})
+const mapFromPostgres = (lead) => {
+  const history = Array.isArray(lead.history) ? lead.history : []
+  const refMeta = history.find(h => h && h.type === 'REFERRAL_MAPPING') || {}
+
+  return {
+    id: lead.id,
+    date: lead.date || '',
+    name: lead.name,
+    phone: lead.phone,
+    location: lead.location || '',
+    lat: lead.lat || '',
+    lng: lead.lng || '',
+    km: lead.km || '',
+    source: lead.source || '',
+    referredContactId: refMeta.contactId || lead.referredContactId || '',
+    referredByName: refMeta.contactName || lead.referredByName || '',
+    referredByPhone: refMeta.contactPhone || lead.referredByPhone || '',
+    referredByType: refMeta.contactType || lead.referredByType || '',
+    size: lead.size || '',
+    budget: lead.budget || '',
+    houseType: lead.housetype || '',
+    custType: lead.custtype || '',
+    stage: lead.stage || '',
+    expectedAmt: lead.expectedamt || '',
+    priority: lead.priority || 'Medium',
+    status: lead.status || 'New Entry',
+    nextDate: lead.nextdate || '',
+    withinDays: lead.withindays || '',
+    remarks: lead.remarks || '',
+    attendedBy: lead.attendedby || '',
+    history
+  }
+}
 
 const mapContactToPostgres = (c) => ({
   id: c.id,

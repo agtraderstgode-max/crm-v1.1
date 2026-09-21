@@ -1,9 +1,28 @@
-import { useState, useRef, useEffect } from 'react'
-import { Search, Plus, MapPin, Phone, X, Save, Navigation } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import {
+  Search, Plus, MapPin, Phone, X, Save, Navigation,
+  Users, Layers, Building2, Briefcase, Compass, CheckCircle2, UserCheck
+} from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
+
+// ─── Helpers ─────────────────────────────────────────────────
+const getInitials = (name = '') => {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 0 || !parts[0]) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[1][0]).toUpperCase()
+}
 
 // ─── Constants ───────────────────────────────────────────────
 const SOURCES = ['Tv Ad','Flex Display','Social Media','Google','Referral','Engineer','Marketing Person','Mestri','Walk In','Company Lead']
+
+const REFERRAL_SUB_TABS = [
+  { id: 'All', label: 'All Contacts', icon: Users },
+  { id: 'Tile Layer', label: 'Tile Layers (Layer / Mestri)', icon: Layers },
+  { id: 'Contractor', label: 'Contractors', icon: Briefcase },
+  { id: 'Architect', label: 'Engineers & Architects', icon: Compass },
+  { id: 'Builder', label: 'Builders', icon: Building2 }
+]
 const BUILDING_SIZES = ['500+','750+','1000+','1250+','1500+','2000+','2500+']
 const BUDGETS = ['Low','Medium','High']
 const HOUSE_TYPES = ['New','Old','Renovation']
@@ -165,15 +184,22 @@ function NameAutocomplete({ value, onChange, onSelect, leads }) {
   )
 }
 
-function AddLeadDrawer({ open, onClose, onSave, leads, lead }) {
+function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [] }) {
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({
     date: today, name: '', phone: '', location: '',
     lat: '', lng: '', km: '', withinDays: '',
-    source: '', size: '', budget: '', houseType: '',
+    source: '', referredContactId: '', referredByName: '', referredByPhone: '', referredByType: '',
+    size: '', budget: '', houseType: '',
     custType: '', stage: '', expectedAmt: '', priority: 'Medium',
     status: 'New Entry', nextDate: '', remarks: '', attendedBy: '',
   })
+
+  // State for Contact Referrer Selection
+  const [referredContact, setReferredContact] = useState(null)
+  const [referralSubTab, setReferralSubTab] = useState('All') // 'All' | 'Tile Layer' | 'Contractor' | 'Architect' | 'Builder'
+  const [contactSearch, setContactSearch] = useState('')
+  const [isBrowsingList, setIsBrowsingList] = useState(false)
 
   // Sync editing lead details if opening in edit mode
   useEffect(() => {
@@ -189,6 +215,10 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead }) {
         km: lead.km || '',
         withinDays: lead.withinDays || '',
         source: lead.source || '',
+        referredContactId: lead.referredContactId || '',
+        referredByName: lead.referredByName || '',
+        referredByPhone: lead.referredByPhone || '',
+        referredByType: lead.referredByType || '',
         size: lead.size || '',
         budget: lead.budget || '',
         houseType: lead.houseType || '',
@@ -201,16 +231,52 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead }) {
         remarks: lead.remarks || '',
         attendedBy: lead.attendedBy || '',
       })
+
+      // Resolve existing referrer contact
+      if (lead.referredContactId || lead.referredByName) {
+        const found = contacts.find(c =>
+          (lead.referredContactId && c.id === lead.referredContactId) ||
+          (lead.referredByName && c.name?.toLowerCase() === lead.referredByName?.toLowerCase())
+        )
+        if (found) {
+          setReferredContact(found)
+        } else {
+          setReferredContact({
+            id: lead.referredContactId || 'CNT',
+            name: lead.referredByName,
+            phone: lead.referredByPhone || '',
+            type: lead.referredByType || 'Tile Layer'
+          })
+        }
+        setIsBrowsingList(false)
+      } else if (lead.source && lead.source.includes(' - ')) {
+        const namePart = lead.source.split(' - ')[1]?.trim()
+        const match = contacts.find(c => c.name?.toLowerCase() === namePart?.toLowerCase())
+        if (match) {
+          setReferredContact(match)
+          setIsBrowsingList(false)
+        } else {
+          setReferredContact(null)
+          setIsBrowsingList(false)
+        }
+      } else {
+        setReferredContact(null)
+        setIsBrowsingList(false)
+      }
     } else {
       setForm({
         date: today, name: '', phone: '', location: '',
         lat: '', lng: '', km: '', withinDays: '',
-        source: '', size: '', budget: '', houseType: '',
+        source: '', referredContactId: '', referredByName: '', referredByPhone: '', referredByType: '',
+        size: '', budget: '', houseType: '',
         custType: '', stage: '', expectedAmt: '', priority: 'Medium',
         status: 'New Entry', nextDate: '', remarks: '', attendedBy: '',
       })
+      setReferredContact(null)
+      setIsBrowsingList(true)
+      setContactSearch('')
     }
-  }, [lead, open])
+  }, [lead, open, contacts])
 
   const set = (k, v) => {
     setForm(prev => {
@@ -222,9 +288,81 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead }) {
     })
   }
 
+  // Handle Source Selection with smart category defaulting
+  const handleSelectSource = (s) => {
+    set('source', s)
+    if (s === 'Referral') {
+      setReferralSubTab('All')
+      if (!referredContact) setIsBrowsingList(true)
+    } else if (s === 'Engineer') {
+      setReferralSubTab('Architect')
+      if (!referredContact) setIsBrowsingList(true)
+    } else if (s === 'Mestri') {
+      setReferralSubTab('Tile Layer')
+      if (!referredContact) setIsBrowsingList(true)
+    } else {
+      // Direct / Non-referral sources
+      setReferredContact(null)
+      setIsBrowsingList(false)
+    }
+  }
+
+  // Referral Category Sub-tab counts
+  const subTabCounts = useMemo(() => {
+    const counts = { All: contacts.length, 'Tile Layer': 0, Contractor: 0, Architect: 0, Builder: 0 }
+    contacts.forEach(c => {
+      const t = c.type || c.category
+      if (t === 'Tile Layer') counts['Tile Layer']++
+      else if (t === 'Contractor') counts.Contractor++
+      else if (t === 'Architect') counts.Architect++
+      else if (t === 'Builder') counts.Builder++
+    })
+    return counts
+  }, [contacts])
+
+  // Filtered Referral Contacts
+  const filteredReferralContacts = useMemo(() => {
+    return contacts.filter(c => {
+      if (referralSubTab === 'Tile Layer') {
+        if (c.type !== 'Tile Layer' && c.category !== 'Tile Layer') return false
+      } else if (referralSubTab === 'Contractor') {
+        if (c.type !== 'Contractor' && c.category !== 'Contractor') return false
+      } else if (referralSubTab === 'Architect') {
+        if (c.type !== 'Architect' && c.category !== 'Architect') return false
+      } else if (referralSubTab === 'Builder') {
+        if (c.type !== 'Builder' && c.category !== 'Builder') return false
+      }
+
+      if (contactSearch.trim()) {
+        const q = contactSearch.toLowerCase().trim()
+        const matchName = c.name?.toLowerCase().includes(q)
+        const matchPhone = c.phone?.replace(/\s/g, '').includes(q.replace(/\s/g, ''))
+        const matchLoc = c.location?.toLowerCase().includes(q)
+        const matchSpec = c.specialization?.toLowerCase().includes(q)
+        if (!matchName && !matchPhone && !matchLoc && !matchSpec) return false
+      }
+      return true
+    })
+  }, [contacts, referralSubTab, contactSearch])
+
   const handleSave = () => {
     if (!form.name || !form.phone) return
-    onSave(form)
+    const toSave = { ...form }
+    const baseSource = (form.source || '').split(' - ')[0]
+
+    if (referredContact && ['Referral', 'Engineer', 'Mestri'].includes(baseSource)) {
+      toSave.source = `${baseSource} - ${referredContact.name}`
+      toSave.referredContactId = referredContact.id
+      toSave.referredByName = referredContact.name
+      toSave.referredByPhone = referredContact.phone
+      toSave.referredByType = referredContact.type || referredContact.category || 'Tile Layer'
+    } else if (!['Referral', 'Engineer', 'Mestri'].includes(baseSource)) {
+      toSave.referredContactId = ''
+      toSave.referredByName = ''
+      toSave.referredByPhone = ''
+      toSave.referredByType = ''
+    }
+    onSave(toSave)
     onClose()
   }
 
@@ -366,23 +504,209 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead }) {
             <div>
               <FieldLabel text="Source / Referred By" required />
               <div className="grid grid-cols-3 gap-2 mt-1">
-                {SOURCES.map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => set('source', s)}
-                    className={cn(
-                      'rounded-lg border px-2 py-1.5 text-xs font-medium transition-all text-center',
-                      form.source === s
-                        ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
-                        : 'border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600 bg-white'
-                    )}
-                  >
-                    {s}
-                  </button>
-                ))}
+                {SOURCES.map(s => {
+                  const baseCurrentSource = (form.source || '').split(' - ')[0]
+                  const isSelected = baseCurrentSource === s
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => handleSelectSource(s)}
+                      className={cn(
+                        'rounded-lg border px-2 py-1.5 text-xs font-medium transition-all text-center flex items-center justify-center gap-1',
+                        isSelected
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                          : 'border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600 bg-white'
+                      )}
+                    >
+                      <span>{s}</span>
+                      {['Referral', 'Engineer', 'Mestri'].includes(s) && (
+                        <span className={cn("text-[9px] px-1 rounded-full", isSelected ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-500")}>
+                          Contacts ▾
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             </div>
+
+            {/* Sub-panel: Contact Referrer Selector */}
+            {['Referral', 'Engineer', 'Mestri'].includes((form.source || '').split(' - ')[0]) && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3.5 space-y-3 transition-all">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                      <Users className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-xs font-bold text-slate-800">
+                      Select {form.source?.split(' - ')[0]} from CRM Contacts Directory
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-blue-700 bg-blue-100/80 border border-blue-200 px-2 py-0.5 rounded-full">
+                    {contacts.length} Contacts
+                  </span>
+                </div>
+
+                {/* If referrer is selected & not currently browsing list */}
+                {referredContact && !isBrowsingList ? (
+                  <div className="p-3 bg-white border border-blue-200 rounded-xl shadow-2xs flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={cn(
+                        "w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 text-white shadow-2xs",
+                        referredContact.avatarColor || "bg-blue-600"
+                      )}>
+                        {getInitials(referredContact.name)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-bold text-slate-900 truncate">{referredContact.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {referredContact.type || referredContact.category || 'Contact'}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400">({referredContact.id})</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 flex items-center gap-3 mt-0.5">
+                          <span>📞 {referredContact.phone}</span>
+                          {referredContact.location && <span>• 📍 {referredContact.location}</span>}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setIsBrowsingList(true)}
+                        className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors"
+                      >
+                        Change
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReferredContact(null)
+                          setIsBrowsingList(true)
+                        }}
+                        className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Remove referrer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Contacts Browsing & Search Panel */
+                  <div className="space-y-2.5">
+                    {/* Sub-tabs pills */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                      {REFERRAL_SUB_TABS.map(tab => {
+                        const Icon = tab.icon
+                        const count = subTabCounts[tab.id] ?? 0
+                        const isActive = referralSubTab === tab.id
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setReferralSubTab(tab.id)}
+                            className={cn(
+                              'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all border',
+                              isActive
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                            )}
+                          >
+                            <Icon className="w-3 h-3" />
+                            <span>{tab.label}</span>
+                            <span className={cn(
+                              'px-1.5 py-0.2 rounded-full text-[10px]',
+                              isActive ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600'
+                            )}>
+                              {count}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Search bar */}
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Search contact by name, phone, or location (e.g. Arvind, Murugan, 63806...)"
+                        value={contactSearch}
+                        onChange={e => setContactSearch(e.target.value)}
+                        className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 text-slate-700"
+                      />
+                      {contactSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setContactSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Contacts List */}
+                    <div className="max-h-48 overflow-y-auto space-y-1 pr-1 border border-slate-200 rounded-lg bg-white p-1.5">
+                      {filteredReferralContacts.length === 0 ? (
+                        <div className="text-center py-5 text-xs text-slate-400">
+                          No matching contacts found in CRM directory.
+                        </div>
+                      ) : (
+                        filteredReferralContacts.map(c => {
+                          const isSelected = referredContact?.id === c.id
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => {
+                                setReferredContact(c)
+                                setIsBrowsingList(false)
+                              }}
+                              className={cn(
+                                'w-full text-left p-2 rounded-lg border transition-all flex items-center justify-between group',
+                                isSelected
+                                  ? 'border-blue-500 bg-blue-50/70 text-blue-900 shadow-2xs'
+                                  : 'border-slate-100 hover:border-blue-200 hover:bg-slate-50/70 bg-white'
+                              )}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={cn(
+                                  'w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] flex-shrink-0 text-white',
+                                  c.avatarColor || 'bg-slate-500'
+                                )}>
+                                  {getInitials(c.name)}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-xs font-semibold text-slate-800 group-hover:text-blue-600 transition-colors truncate">
+                                      {c.name}
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                      {c.type || c.category}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-mono">({c.id})</span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                    <span>📞 {c.phone}</span>
+                                    {c.location && <span>• 📍 {c.location}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                              <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded opacity-80 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                Select →
+                              </span>
+                            </button>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Section 4 — Building Details */}
@@ -629,6 +953,7 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead }) {
 // ─── Leads Page ───────────────────────────────────────────────
 export function LeadsPage() {
   const [leads, setLeads] = useState([])
+  const [contacts, setContacts] = useState([])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('All Status')
@@ -639,7 +964,7 @@ export function LeadsPage() {
   const [loading, setLoading] = useState(true)
   const [selectedLead, setSelectedLead] = useState(null)
 
-  // Fetch leads from Express backend
+  // Fetch leads and contacts from backend
   useEffect(() => {
     fetch('/api/leads')
       .then(res => res.json())
@@ -651,6 +976,11 @@ export function LeadsPage() {
         console.error("Error fetching leads:", err)
         setLoading(false)
       })
+
+    fetch('/api/contacts')
+      .then(res => res.json())
+      .then(data => setContacts(data || []))
+      .catch(err => console.warn("Error fetching contacts:", err))
   }, [])
 
   const handleSave = (lead) => {
@@ -708,7 +1038,10 @@ export function LeadsPage() {
     const q = search.toLowerCase()
     const matchSearch = l.name.toLowerCase().includes(q) || l.phone.includes(q) || (l.location || '').toLowerCase().includes(q)
     const matchStatus = filterStatus === 'All Status' || l.status === filterStatus
-    const matchSource = filterSource === 'All Sources' || l.source === filterSource
+    const matchSource = filterSource === 'All Sources'
+      || l.source === filterSource
+      || (l.source && l.source.startsWith(`${filterSource} -`))
+      || (filterSource === 'Referral' && (l.referredByName || l.referredContactId))
     return matchSearch && matchStatus && matchSource
   })
 
@@ -751,7 +1084,7 @@ export function LeadsPage() {
 
   return (
     <>
-      <AddLeadDrawer open={drawerOpen} onClose={() => { setDrawerOpen(false); setSelectedLead(null); }} onSave={handleSave} leads={leads} lead={selectedLead} />
+      <AddLeadDrawer open={drawerOpen} onClose={() => { setDrawerOpen(false); setSelectedLead(null); }} onSave={handleSave} leads={leads} lead={selectedLead} contacts={contacts} />
 
       <div className="space-y-5">
         {/* ── Header ── */}
@@ -948,7 +1281,39 @@ export function LeadsPage() {
                     </p>
                     <p className="text-[11px] text-slate-400 mt-0.5 pl-4">{lead.km} km from showroom</p>
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-600">{lead.source}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">
+                    {lead.referredByName ? (
+                      <div className="space-y-0.5">
+                        <span className="font-semibold text-blue-700 flex items-center gap-1">
+                          <Users className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                          {lead.source?.split(' - ')[0] || 'Referral'}
+                        </span>
+                        <div className="flex items-center gap-1 text-[11px] text-slate-600">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                          <span className="truncate max-w-[130px] font-medium" title={`${lead.referredByName} (${lead.referredByType || 'Contact'}${lead.referredByPhone ? ' • ' + lead.referredByPhone : ''})`}>
+                            {lead.referredByName}
+                          </span>
+                        </div>
+                        {lead.referredByType && (
+                          <span className="text-[10px] text-slate-400 block truncate max-w-[120px]">
+                            {lead.referredByType}
+                          </span>
+                        )}
+                      </div>
+                    ) : lead.source && lead.source.includes(' - ') ? (
+                      <div className="space-y-0.5">
+                        <span className="font-semibold text-blue-700 flex items-center gap-1">
+                          <Users className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                          {lead.source.split(' - ')[0]}
+                        </span>
+                        <span className="text-[11px] text-slate-600 block truncate max-w-[130px]" title={lead.source.split(' - ')[1]}>
+                          {lead.source.split(' - ')[1]}
+                        </span>
+                      </div>
+                    ) : (
+                      lead.source
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <p className="text-xs font-medium text-slate-700">{lead.size} sqft</p>
                     <p className="text-[11px] text-slate-400">{lead.houseType} · {lead.budget}</p>

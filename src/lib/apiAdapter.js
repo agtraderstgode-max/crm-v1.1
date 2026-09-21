@@ -52,55 +52,80 @@ const mapStaffToSupabase = (s) => ({
   incentives: s.incentives || []
 })
 
-const mapLeadFromSupabase = (l) => ({
-  id: l.id,
-  date: l.date || '',
-  name: l.name,
-  phone: l.phone,
-  location: l.location || '',
-  lat: l.lat || '',
-  lng: l.lng || '',
-  km: l.km || '',
-  source: l.source || '',
-  size: l.size || '',
-  budget: l.budget || '',
-  houseType: l.housetype || '',
-  custType: l.custtype || '',
-  stage: l.stage || '',
-  expectedAmt: l.expectedamt || '',
-  priority: l.priority || 'Medium',
-  status: l.status || 'New Entry',
-  nextDate: l.nextdate || '',
-  withinDays: l.withindays || '',
-  remarks: l.remarks || '',
-  attendedBy: l.attendedby || '',
-  history: l.history || []
-})
+const mapLeadFromSupabase = (l) => {
+  const history = Array.isArray(l.history) ? l.history : []
+  const refMeta = history.find(h => h && h.type === 'REFERRAL_MAPPING') || {}
 
-const mapLeadToSupabase = (l) => ({
-  id: l.id,
-  date: l.date || null,
-  name: l.name,
-  phone: l.phone,
-  location: l.location || null,
-  lat: l.lat ? parseFloat(l.lat) : null,
-  lng: l.lng ? parseFloat(l.lng) : null,
-  km: l.km ? parseFloat(l.km) : null,
-  source: l.source || null,
-  size: l.size || null,
-  budget: l.budget || null,
-  housetype: l.houseType || null,
-  custtype: l.custType || null,
-  stage: l.stage || null,
-  expectedamt: l.expectedAmt || null,
-  priority: l.priority || 'Medium',
-  status: l.status || 'New Entry',
-  nextdate: l.nextDate || null,
-  withindays: l.withinDays || null,
-  remarks: l.remarks || null,
-  attendedby: l.attendedBy || null,
-  history: l.history || []
-})
+  return {
+    id: l.id,
+    date: l.date || '',
+    name: l.name,
+    phone: l.phone,
+    location: l.location || '',
+    lat: l.lat || '',
+    lng: l.lng || '',
+    km: l.km || '',
+    source: l.source || '',
+    referredContactId: refMeta.contactId || l.referredContactId || '',
+    referredByName: refMeta.contactName || l.referredByName || '',
+    referredByPhone: refMeta.contactPhone || l.referredByPhone || '',
+    referredByType: refMeta.contactType || l.referredByType || '',
+    size: l.size || '',
+    budget: l.budget || '',
+    houseType: l.housetype || '',
+    custType: l.custtype || '',
+    stage: l.stage || '',
+    expectedAmt: l.expectedamt || '',
+    priority: l.priority || 'Medium',
+    status: l.status || 'New Entry',
+    nextDate: l.nextdate || '',
+    withinDays: l.withindays || '',
+    remarks: l.remarks || '',
+    attendedBy: l.attendedby || '',
+    history
+  }
+}
+
+const mapLeadToSupabase = (l) => {
+  const history = Array.isArray(l.history) ? [...l.history] : []
+  if (l.referredContactId || l.referredByName) {
+    const existingIdx = history.findIndex(h => h && h.type === 'REFERRAL_MAPPING')
+    const refEntry = {
+      type: 'REFERRAL_MAPPING',
+      contactId: l.referredContactId || '',
+      contactName: l.referredByName || '',
+      contactPhone: l.referredByPhone || '',
+      contactType: l.referredByType || ''
+    }
+    if (existingIdx !== -1) history[existingIdx] = refEntry
+    else history.unshift(refEntry)
+  }
+
+  return {
+    id: l.id,
+    date: l.date || null,
+    name: l.name,
+    phone: l.phone,
+    location: l.location || null,
+    lat: l.lat ? parseFloat(l.lat) : null,
+    lng: l.lng ? parseFloat(l.lng) : null,
+    km: l.km ? parseFloat(l.km) : null,
+    source: l.source || null,
+    size: l.size || null,
+    budget: l.budget || null,
+    housetype: l.houseType || null,
+    custtype: l.custType || null,
+    stage: l.stage || null,
+    expectedamt: l.expectedAmt || null,
+    priority: l.priority || 'Medium',
+    status: l.status || 'New Entry',
+    nextdate: l.nextDate || null,
+    withindays: l.withinDays || null,
+    remarks: l.remarks || null,
+    attendedby: l.attendedBy || null,
+    history
+  }
+}
 
 const mapCustomerFromSupabase = (c) => ({
   id: c.id,
