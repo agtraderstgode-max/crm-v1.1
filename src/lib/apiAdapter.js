@@ -683,8 +683,17 @@ export async function handleApiRequest(url, options = {}) {
 
   // ─── /api/products & /api/categories ───────────────────────────────────────
   if (pathname === '/api/products' && method === 'GET') {
-    const { data: prods } = await supabase.from('products').select('*')
-    const { data: cats } = await supabase.from('categories').select('*')
+    let prods = []
+    let from = 0
+    const pageSize = 1000
+    while (true) {
+      const { data } = await supabase.from('products').select('*').range(from, from + pageSize - 1)
+      if (!data || data.length === 0) break
+      prods = prods.concat(data)
+      if (data.length < pageSize) break
+      from += pageSize
+    }
+    const { data: cats } = await supabase.from('categories').select('*').range(0, 4999)
     const categories = cats || []
     const joined = (prods || []).map(p => {
       if (p.category_id && p.category_id !== 'NO_CAT') {
@@ -709,7 +718,7 @@ export async function handleApiRequest(url, options = {}) {
   }
 
   if (pathname === '/api/categories' && method === 'GET') {
-    const { data } = await supabase.from('categories').select('*')
+    const { data } = await supabase.from('categories').select('*').range(0, 4999)
     return jsonResponse(data || [])
   }
 

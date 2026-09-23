@@ -99,9 +99,34 @@ window.fetch = async function(input, init = {}) {
       }
 
       if (url.startsWith('/api/products') && method === 'GET') {
-        const { data, error } = await supabaseClient.from('products').select('*');
-        if (error) throw error;
-        return new Response(JSON.stringify(data || []), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        let prods = [];
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data, error: pErr } = await supabaseClient.from('products').select('*').range(from, from + pageSize - 1);
+          if (pErr) throw pErr;
+          if (!data || data.length === 0) break;
+          prods = prods.concat(data);
+          if (data.length < pageSize) break;
+          from += pageSize;
+        }
+        const { data: cats } = await supabaseClient.from('categories').select('*').range(0, 4999);
+        const catMap = new Map((cats || []).map(c => [c.id, c]));
+        const enriched = prods.map(p => {
+          const cat = catMap.get(p.category_id);
+          return {
+            ...p,
+            mrp: cat ? cat.mrp : 0,
+            online_price: cat ? cat.online_price : 0,
+            sqft_price: cat ? cat.sqft_price : 0,
+            price: cat ? `₹${cat.sqft_price}/sqft` : '',
+            pcs_per_box: cat ? cat.pcs_per_box : 0,
+            sqft_per_box: cat ? cat.sqft_per_box : 0,
+            weight_per_box: cat ? cat.weight_per_box : 0,
+            category: cat ? cat.name : (p.category_id || '')
+          };
+        });
+        return new Response(JSON.stringify(enriched), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
     }
   }

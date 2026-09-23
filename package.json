@@ -9,6 +9,7 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "vite build",
     "sync:contacts": "node scripts/sync-contacts.js",
+    "sync:products": "node scripts/import-all-products.js",
     "lint": "oxlint",
     "preview": "vite preview"
   },
