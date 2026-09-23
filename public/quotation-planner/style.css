@@ -338,6 +338,17 @@ body {
   color: #10b981;
 }
 
+.btn-icon-edit {
+  background: transparent; border: none;
+  color: var(--text3);
+  width: 30px; height: 30px;
+  padding: 0; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.18s;
+}
+.btn-icon-edit svg { width: 15px; height: 15px; }
+.btn-icon-edit:hover { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+
 .btn-icon-del {
   background: transparent; border: none;
   color: var(--text3);
@@ -1597,6 +1608,11 @@ dialog[open]::backdrop {
 }
 
 /* Modal sizes */
+#edit-room-modal {
+  width: 540px;
+  max-width: 95vw;
+}
+
 #settings-modal {
   width: 450px;
   max-width: 90vw;

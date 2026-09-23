@@ -853,6 +853,70 @@ document.addEventListener('DOMContentLoaded', () => {
     el && el.addEventListener('keydown', e => { if (e.key === 'Enter') addRoom(); });
   });
 
+  // Edit Room Modal listeners
+  const editModal = document.getElementById('edit-room-modal');
+  if (editModal) {
+    editModal.addEventListener('click', (e) => {
+      if (e.target === editModal) closeEditRoomModal();
+    });
+  }
+
+  const editTileInput = document.getElementById('edit-tile-search');
+  if (editTileInput) {
+    editTileInput.addEventListener('focus', () => {
+      if (editTileInput.value.trim()) onEditTileSearch();
+      else { editFilteredTiles = [...TILE_DB]; renderEditDropdown(); }
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const editWrapper = document.getElementById('edit-tile-search-wrapper');
+    if (editWrapper && !editWrapper.contains(e.target)) {
+      closeEditTileDropdown();
+    }
+  });
+
+  const editDropdownEl = document.getElementById('edit-tile-dropdown');
+  if (editDropdownEl) {
+    editDropdownEl.addEventListener('click', (e) => {
+      const option = e.target.closest('.tile-option');
+      if (option) {
+        const idx = parseInt(option.getAttribute('data-idx'), 10);
+        selectEditTile(idx);
+      }
+    });
+
+    editDropdownEl.addEventListener('mouseover', (e) => {
+      const option = e.target.closest('.tile-option');
+      if (option) {
+        const idx = parseInt(option.getAttribute('data-idx'), 10);
+        if (editHighlightedIdx !== idx) {
+          editHighlightedIdx = idx;
+          const options = editDropdownEl.querySelectorAll('.tile-option');
+          options.forEach((opt, index) => {
+            if (index === editHighlightedIdx) {
+              opt.classList.add('highlighted');
+            } else {
+              opt.classList.remove('highlighted');
+            }
+          });
+        }
+      }
+    });
+  }
+
+  ['edit-room-name', 'edit-room-length', 'edit-room-breadth', 'edit-room-area', 'edit-final-boxes'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveEditedRoom();
+        }
+      });
+    }
+  });
+
   renderTable();
 });
 
@@ -1097,6 +1161,224 @@ function addRoom() {
   roomNameEl().focus();
 }
 
+// ─── Edit Room Modal ─────────────────────────────────────────────
+let editSelectedTile = null;
+let editFilteredTiles = [];
+let editHighlightedIdx = -1;
+
+function openEditRoomModal(id) {
+  const room = rooms.find(r => r.id === id);
+  if (!room) return;
+
+  document.getElementById('edit-room-id').value = room.id;
+  document.getElementById('edit-room-name').value = room.name || '';
+  document.getElementById('edit-room-length').value = room.length > 0 ? room.length : '';
+  document.getElementById('edit-room-breadth').value = room.breadth > 0 ? room.breadth : '';
+  document.getElementById('edit-room-area').value = (room.area != null && !isNaN(room.area)) ? room.area.toFixed(2) : '';
+
+  let tile = TILE_DB.find(t => t.name.toLowerCase() === (room.tileName || '').toLowerCase());
+  if (!tile) {
+    tile = {
+      name: room.tileName,
+      coverage: room.coverage || 1,
+      weight: room.weight || 0
+    };
+  }
+  editSelectedTile = tile;
+
+  document.getElementById('edit-tile-search').value = room.tileName || '';
+  document.getElementById('edit-info-coverage').textContent = `📐 ${tile.coverage} sqft/box`;
+  document.getElementById('edit-info-weight').textContent = `⚖️ ${tile.weight} kg/box`;
+
+  document.getElementById('edit-final-boxes').value = room.boxesFinal || 1;
+  const boxesExact = (tile.coverage > 0 && room.area > 0) ? (room.area / tile.coverage) : 0;
+  const hintEl = document.getElementById('edit-actual-boxes-hint');
+  if (hintEl) {
+    hintEl.textContent = boxesExact > 0 ? `(actual: ${boxesExact.toFixed(2)})` : '';
+  }
+
+  closeEditTileDropdown();
+
+  const modal = document.getElementById('edit-room-modal');
+  if (modal) {
+    modal.showModal();
+    setTimeout(() => {
+      document.getElementById('edit-room-name')?.focus();
+    }, 50);
+  }
+}
+
+function closeEditRoomModal() {
+  const modal = document.getElementById('edit-room-modal');
+  if (modal && modal.open) modal.close();
+  closeEditTileDropdown();
+  editSelectedTile = null;
+}
+
+function onEditDimensionsChange() {
+  const length = parseFloat(document.getElementById('edit-room-length').value) || 0;
+  const breadth = parseFloat(document.getElementById('edit-room-breadth').value) || 0;
+  if (length > 0 && breadth > 0) {
+    const area = length * breadth;
+    document.getElementById('edit-room-area').value = area.toFixed(2);
+    recalcEditBoxes();
+  }
+}
+
+function onEditAreaChange() {
+  recalcEditBoxes();
+}
+
+function recalcEditBoxes() {
+  const area = parseFloat(document.getElementById('edit-room-area').value) || 0;
+  const hintEl = document.getElementById('edit-actual-boxes-hint');
+  const finalBoxesEl = document.getElementById('edit-final-boxes');
+
+  if (editSelectedTile && editSelectedTile.coverage > 0 && area > 0) {
+    const boxesExact = area / editSelectedTile.coverage;
+    if (hintEl) hintEl.textContent = `(actual: ${boxesExact.toFixed(2)})`;
+    if (finalBoxesEl) finalBoxesEl.value = Math.ceil(boxesExact);
+  } else {
+    if (hintEl) hintEl.textContent = '';
+  }
+}
+
+function onEditTileSearch() {
+  const q = document.getElementById('edit-tile-search').value.trim().toLowerCase();
+  if (!q) {
+    editFilteredTiles = [...TILE_DB];
+  } else {
+    editFilteredTiles = TILE_DB.filter(t => t.name.toLowerCase().includes(q));
+  }
+  editHighlightedIdx = -1;
+  renderEditDropdown();
+}
+
+function renderEditDropdown() {
+  const dd = document.getElementById('edit-tile-dropdown');
+  if (!dd) return;
+  if (editFilteredTiles.length === 0) {
+    dd.innerHTML = `<div style="padding:0.7rem 1rem;font-size:0.82rem;color:var(--text3);">No tiles found</div>`;
+    dd.classList.add('open');
+    return;
+  }
+  dd.innerHTML = editFilteredTiles.slice(0, 500).map((t, i) => `
+    <div class="tile-option ${i === editHighlightedIdx ? 'highlighted' : ''}" data-idx="${i}" style="padding: 0.6rem 0.9rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+      <span class="tile-option-name" style="font-size:0.83rem; color:var(--text); flex:1; text-align: left;">${escHtml(t.name)}</span>
+      <span class="tile-option-badges" style="display:flex; gap:0.3rem; flex-shrink:0;">
+        <span class="tile-option-badge wt" style="font-size:0.68rem; padding:0.15rem 0.4rem; border-radius:4px; font-weight:600; background:rgba(16,185,129,0.2); color:#6ee7b7;">${t.weight} kg</span>
+      </span>
+    </div>
+  `).join('');
+  dd.classList.add('open');
+}
+
+function closeEditTileDropdown() {
+  const dd = document.getElementById('edit-tile-dropdown');
+  if (dd) {
+    dd.classList.remove('open');
+    dd.innerHTML = '';
+  }
+  editFilteredTiles = [];
+  editHighlightedIdx = -1;
+}
+
+function scrollEditHighlightedIntoView() {
+  const dd = document.getElementById('edit-tile-dropdown');
+  if (!dd) return;
+  const highlighted = dd.querySelector('.tile-option.highlighted');
+  if (highlighted) {
+    const ddRect = dd.getBoundingClientRect();
+    const elemRect = highlighted.getBoundingClientRect();
+    if (elemRect.bottom > ddRect.bottom) {
+      dd.scrollTop += elemRect.bottom - ddRect.bottom;
+    } else if (elemRect.top < ddRect.top) {
+      dd.scrollTop -= ddRect.top - elemRect.top;
+    }
+  }
+}
+
+function onEditTileKeyNav(e) {
+  const dd = document.getElementById('edit-tile-dropdown');
+  if (!dd || !dd.classList.contains('open')) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    editHighlightedIdx = Math.min(editHighlightedIdx + 1, editFilteredTiles.length - 1);
+    renderEditDropdown();
+    scrollEditHighlightedIntoView();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    editHighlightedIdx = Math.max(editHighlightedIdx - 1, 0);
+    renderEditDropdown();
+    scrollEditHighlightedIntoView();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (editHighlightedIdx >= 0) selectEditTile(editHighlightedIdx);
+  } else if (e.key === 'Escape') {
+    closeEditTileDropdown();
+  }
+}
+
+function selectEditTile(idx) {
+  if (idx < 0 || idx >= editFilteredTiles.length) return;
+  const tile = editFilteredTiles[idx];
+  if (!tile) return;
+  editSelectedTile = tile;
+  document.getElementById('edit-tile-search').value = tile.name;
+  document.getElementById('edit-info-coverage').textContent = `📐 ${tile.coverage} sqft/box`;
+  document.getElementById('edit-info-weight').textContent = `⚖️ ${tile.weight} kg/box`;
+  closeEditTileDropdown();
+  recalcEditBoxes();
+}
+
+function saveEditedRoom() {
+  const id = parseInt(document.getElementById('edit-room-id').value, 10);
+  const nameEl = document.getElementById('edit-room-name');
+  const areaEl = document.getElementById('edit-room-area');
+  const tileEl = document.getElementById('edit-tile-search');
+  const boxesEl = document.getElementById('edit-final-boxes');
+
+  const name = nameEl.value.trim();
+  const length = parseFloat(document.getElementById('edit-room-length').value) || 0;
+  const breadth = parseFloat(document.getElementById('edit-room-breadth').value) || 0;
+  const area = parseFloat(areaEl.value) || 0;
+  const finalBoxes = parseInt(boxesEl.value, 10);
+
+  if (!name) { shake(nameEl); nameEl.focus(); return; }
+  if (area <= 0) { shake(areaEl); areaEl.focus(); return; }
+  if (!editSelectedTile) { shake(tileEl); tileEl.focus(); return; }
+  if (isNaN(finalBoxes) || finalBoxes <= 0) { shake(boxesEl); boxesEl.focus(); return; }
+
+  const room = rooms.find(r => r.id === id);
+  if (!room) {
+    closeEditRoomModal();
+    return;
+  }
+
+  const boxesExact = area / editSelectedTile.coverage;
+  const totalWeight = finalBoxes * editSelectedTile.weight;
+
+  room.name = name;
+  room.length = length;
+  room.breadth = breadth;
+  room.area = area;
+  room.tileName = editSelectedTile.name;
+  room.coverage = editSelectedTile.coverage;
+  room.weight = editSelectedTile.weight;
+  room.boxesExact = boxesExact;
+  room.boxesFinal = finalBoxes;
+  room.totalWeight = totalWeight;
+
+  renderTable();
+  renderSummary();
+
+  if (typeof activeEstimateId !== 'undefined' && activeEstimateId && typeof supabaseClient !== 'undefined' && supabaseClient) {
+    savePlanToCloudSilent();
+  }
+
+  closeEditRoomModal();
+}
+
 // ─── Delete Room ────────────────────────────────────────────────
 function deleteRoom(id) {
   const idx = rooms.findIndex(r => r.id === id);
@@ -1153,10 +1435,15 @@ function renderTable() {
       </td>
       <td class="td-wt">${r.weight}</td>
       <td class="td-total-wt">${r.totalWeight}</td>
-      <td>
-        <button class="btn-icon-del" onclick="deleteRoom(${r.id})" title="Delete room">
-          <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-        </button>
+      <td class="td-action" style="text-align: center;">
+        <div style="display: inline-flex; align-items: center; justify-content: center; gap: 4px;">
+          <button class="btn-icon-edit" onclick="openEditRoomModal(${r.id})" title="Edit room">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
+          </button>
+          <button class="btn-icon-del" onclick="deleteRoom(${r.id})" title="Delete room">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+          </button>
+        </div>
       </td>
     </tr>`;
   }).join('');

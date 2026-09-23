@@ -282,7 +282,7 @@
               <th class="col-final">Final Boxes</th>
               <th class="col-wt">Wt/Box (kg)</th>
               <th class="col-total-wt">Total Wt (kg)</th>
-              <th class="col-del">Del</th>
+              <th class="col-action" style="text-align: center; width: 85px;">Action</th>
             </tr>
           </thead>
           <tbody id="plan-tbody">
@@ -640,6 +640,62 @@
       </div>
     </div>
   </div>
+
+  <!-- Edit Room Modal -->
+  <dialog id="edit-room-modal" closedby="any" aria-labelledby="edit-room-title">
+    <div class="modal-header">
+      <h3 id="edit-room-title">✏️ Edit Room Plan</h3>
+      <button class="modal-close-btn" onclick="closeEditRoomModal()">×</button>
+    </div>
+    <div class="modal-body" style="overflow: visible;">
+      <input type="hidden" id="edit-room-id" />
+
+      <div class="field-group" style="margin-bottom: 1.1rem;">
+        <label for="edit-room-name">Room Name</label>
+        <input type="text" id="edit-room-name" placeholder="e.g. Hall, Bedroom, Kitchen" list="room-suggestions" autocomplete="off" />
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.1rem;">
+        <div class="field-group">
+          <label>Room Size (feet)</label>
+          <div class="size-inputs" style="display: flex; align-items: center; gap: 0.4rem;">
+            <input type="number" id="edit-room-length" placeholder="Length (L)" min="0" step="0.5" oninput="onEditDimensionsChange()" />
+            <span class="size-x" style="color: var(--text3); font-weight: 700;">×</span>
+            <input type="number" id="edit-room-breadth" placeholder="Breadth (B)" min="0" step="0.5" oninput="onEditDimensionsChange()" />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="edit-room-area">Area (sqft)</label>
+          <input type="number" id="edit-room-area" placeholder="e.g. 253" step="0.01" min="0" oninput="onEditAreaChange()" style="font-weight: 600; color: #6ee7b7; background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.2);" />
+        </div>
+      </div>
+
+      <div class="field-group" style="margin-bottom: 1.1rem; position: relative;">
+        <label for="edit-tile-search">Tile Model / Design</label>
+        <div class="tile-search-wrapper" id="edit-tile-search-wrapper" style="position: relative;">
+          <input type="text" id="edit-tile-search" placeholder="Type to search tile..." autocomplete="off" oninput="onEditTileSearch()" onkeydown="onEditTileKeyNav(event)" />
+          <div class="tile-dropdown" id="edit-tile-dropdown"></div>
+        </div>
+        <div id="edit-tile-info-display" style="display: flex; gap: 0.6rem; margin-top: 0.5rem;">
+          <span class="badge badge-blue" id="edit-info-coverage" style="font-size: 0.72rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: rgba(6,182,212,0.15); color: #67e8f9;">–</span>
+          <span class="badge badge-green" id="edit-info-weight" style="font-size: 0.72rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: rgba(16,185,129,0.15); color: #6ee7b7;">–</span>
+        </div>
+      </div>
+
+      <div class="field-group" style="max-width: 220px; margin-bottom: 0.5rem;">
+        <label for="edit-final-boxes">Final Boxes <span id="edit-actual-boxes-hint" style="font-weight:400; color: var(--text2); font-size:0.75rem;"></span></label>
+        <input type="number" id="edit-final-boxes" min="1" step="1" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeEditRoomModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditedRoom()">
+        <svg viewBox="0 0 20 20" fill="currentColor" style="width: 16px; height: 16px; margin-right: 4px;"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+        Save Changes
+      </button>
+    </div>
+  </dialog>
 
   <!-- Settings Modal -->
   <dialog id="settings-modal" closedby="any" aria-labelledby="settings-title">
