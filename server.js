@@ -362,6 +362,100 @@ const mapContactFromPostgres = (c) => ({
   created_at: c.created_at || c.createdAt || ''
 })
 
+const mapOrderToPostgres = (o) => {
+  let notes = o.paymentNotes || o.paymentnotes || ''
+  if (o.status === 'Cancelled' && o.cancelReason) {
+    const at = o.cancelledAt || new Date().toISOString()
+    notes = `[CANCELLED: ${o.cancelReason}] [AT: ${at}] ${notes}`.trim()
+  }
+
+  let finalPayments = []
+  if (Array.isArray(o.payments) && o.payments.length > 0) {
+    finalPayments = o.payments
+  } else if (Array.isArray(o.splitPayments) && o.splitPayments.length > 0) {
+    finalPayments = o.splitPayments
+  } else if (Array.isArray(o.splitpayments) && o.splitpayments.length > 0) {
+    finalPayments = o.splitpayments
+  }
+
+  return {
+    id: o.id,
+    customer: o.customer,
+    phone: o.phone || null,
+    date: o.date || null,
+    items: parseInt(o.items) || 0,
+    total: o.total || '',
+    status: o.status || 'Processing',
+    delivery: o.delivery || null,
+    deliverytype: o.deliveryType || o.deliverytype || null,
+    transport: o.transport || null,
+    vehicleinfo: o.vehicleInfo || o.vehicleinfo || null,
+    handleby: o.handleBy || o.handleby || null,
+    confirmedat: o.confirmedAt || o.confirmedat || null,
+    dispatchedat: o.dispatchedAt || o.dispatchedat || null,
+    deliveredat: o.deliveredAt || o.deliveredat || null,
+    splitpayments: finalPayments,
+    balancemode: o.balanceMode || o.balancemode || null,
+    paymentnotes: notes || null,
+    itemsdetails: o.itemsDetails || o.itemsdetails || []
+  }
+}
+
+const mapOrderFromPostgres = (o) => {
+  let cancelReason = o.cancelReason || ''
+  let paymentNotes = o.paymentnotes || ''
+  let cancelledAt = o.cancelledAt || ''
+
+  if (paymentNotes.startsWith('[CANCELLED:')) {
+    const match = paymentNotes.match(/^\[CANCELLED:\s*(.*?)\](?:\s*\[AT:\s*(.*?)\])?\s*(.*)$/)
+    if (match) {
+      cancelReason = match[1] || cancelReason
+      cancelledAt = match[2] || cancelledAt
+      paymentNotes = match[3] || ''
+    }
+  }
+
+  const rawSplit = Array.isArray(o.splitpayments) ? o.splitpayments : []
+  const payments = rawSplit
+    .filter(p => p && (parseFloat(p.amount) > 0 || p.mode))
+    .map((p, idx) => ({
+      id: p.id || `PAY-${o.id || 'ORD'}-${idx + 1}`,
+      date: p.date || o.confirmedat || o.date || (o.created_at ? new Date(o.created_at).toISOString() : new Date().toISOString()),
+      amount: parseFloat(p.amount) || 0,
+      mode: p.mode || 'Cash',
+      ref: p.ref || 'Order Confirmation',
+      notes: p.notes || ''
+    }))
+
+  const paidAmount = payments.reduce((sum, p) => sum + (p.mode !== 'Write Off' ? p.amount : 0), 0)
+
+  return {
+    id: o.id,
+    customer: o.customer,
+    phone: o.phone || '',
+    date: o.date || '',
+    items: o.items || 0,
+    total: o.total || '',
+    status: o.status || 'Processing',
+    delivery: o.delivery || '',
+    deliveryType: o.deliverytype || '',
+    transport: o.transport || '',
+    vehicleInfo: o.vehicleinfo || '',
+    handleBy: o.handleby || '',
+    confirmedAt: o.confirmedat || '',
+    dispatchedAt: o.dispatchedat || '',
+    deliveredAt: o.deliveredat || '',
+    splitPayments: rawSplit.length > 0 ? rawSplit : payments,
+    payments,
+    paidAmount,
+    balanceMode: o.balancemode || '',
+    paymentNotes,
+    cancelReason,
+    cancelledAt,
+    itemsDetails: o.itemsdetails || []
+  }
+}
+
 // ─── Offline-First Auto-Sync Engine ──────────────────────────────────────────
 const getSyncQueue = () => {
   try { return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf-8')) } catch { return [] }
@@ -384,6 +478,8 @@ const syncRecordToSupabase = async (table, action, record) => {
     row = mapToPostgres(record, true)
   } else if (table === 'contacts') {
     row = mapContactToPostgres(record)
+  } else if (table === 'orders') {
+    row = mapOrderToPostgres(record)
   }
   const { error } = await supabase.from(table).upsert([row])
   if (error) throw error
@@ -453,6 +549,17 @@ const refreshLocalFromCloud = async () => {
       }
     } catch (cEx) {
       // Supabase contacts table might not exist yet
+    }
+
+    try {
+      const { data: oData, error: oErr } = await supabase.from('orders').select('*').order('date', { ascending: false })
+      if (!oErr && oData && oData.length > 0) {
+        const mappedOrders = oData.map(mapOrderFromPostgres)
+        saveLocalOrders(mappedOrders)
+        console.log(`☁️  Local orders refreshed from Supabase (${mappedOrders.length} orders)`)
+      }
+    } catch (oEx) {
+      // Supabase orders table might not exist yet
     }
 
     // Also process any pending offline queue items
@@ -539,7 +646,17 @@ app.delete('/api/leads/:id', async (req, res) => {
 })
 
 // ─── GET /api/orders ───────────────────────────────────────────────────────────
-app.get('/api/orders', (req, res) => {
+app.get('/api/orders', async (req, res) => {
+  if (USE_CLOUD && supabase) {
+    try {
+      const { data, error } = await supabase.from('orders').select('*').order('date', { ascending: false })
+      if (!error && data) {
+        return res.json(data.map(mapOrderFromPostgres))
+      }
+    } catch (err) {
+      console.warn('⚠️  Supabase read orders failed, serving local:', err.message)
+    }
+  }
   res.json(getLocalOrders())
 })
 

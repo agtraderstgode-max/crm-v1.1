@@ -207,13 +207,15 @@ export function DashboardPage() {
 
   let todayRevenue = 0
   orders.forEach(o => {
-    if (o.payments) {
-      o.payments.forEach(p => {
-        if (p.date === todayStr && p.mode !== 'Write Off') {
-          todayRevenue += parseFloat(p.amount) || 0
-        }
-      })
-    }
+    const pList = (Array.isArray(o.payments) && o.payments.length > 0)
+      ? o.payments
+      : (Array.isArray(o.splitPayments) ? o.splitPayments : [])
+    pList.forEach(p => {
+      const pDate = p.date ? p.date.split('T')[0] : (o.confirmedAt ? o.confirmedAt.split('T')[0] : (o.date || ''))
+      if (pDate === todayStr && p.mode !== 'Write Off') {
+        todayRevenue += parseFloat(p.amount) || 0
+      }
+    })
   })
 
   const pendingOrdersCount = orders.filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled').length

@@ -61,14 +61,17 @@ export function PaymentsPage() {
   // Calculate order payments details
   const getOrderPaymentInfo = (order) => {
     const total = parseAmount(order.total)
-    const payments = order.payments || []
-    const paid = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0)
-    const balance = total - paid
+    let payments = Array.isArray(order.payments) && order.payments.length > 0
+      ? order.payments
+      : (Array.isArray(order.splitPayments) ? order.splitPayments : [])
+    const paid = payments.reduce((sum, p) => sum + (p.mode !== 'Write Off' ? (parseFloat(p.amount) || 0) : 0), 0)
+    const writeOff = payments.reduce((sum, p) => sum + (p.mode === 'Write Off' ? (parseFloat(p.amount) || 0) : 0), 0)
+    const balance = Math.max(0, total - paid - writeOff)
     let status = 'Unpaid'
-    if (paid > 0) {
+    if (paid > 0 || writeOff > 0) {
       status = balance <= 0 ? 'Fully Paid' : 'Partial'
     }
-    return { total, paid, balance, status }
+    return { total, paid, balance, status, writeOff }
   }
 
   // Days from delivery → fully paid date (frozen) OR delivery → today (live)
@@ -83,15 +86,18 @@ export function PaymentsPage() {
 
     if (balance <= 0) {
       // Find the payment that completed full payment
-      const payments = [...(order.payments || [])]
+      const rawPayments = Array.isArray(order.payments) && order.payments.length > 0
+        ? order.payments
+        : (Array.isArray(order.splitPayments) ? order.splitPayments : [])
+      const payments = [...rawPayments]
         .filter(p => p.mode !== 'Write Off')
-        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0))
       let cumulative = 0
       let paidDate = null
       for (const p of payments) {
         cumulative += parseFloat(p.amount) || 0
         if (cumulative >= total) {
-          paidDate = new Date(p.date)
+          paidDate = new Date(p.date || 0)
           paidDate.setHours(0, 0, 0, 0)
           break
         }
@@ -143,10 +149,22 @@ export function PaymentsPage() {
       notes: payNotes
     }
 
-    const updatedPayments = [...(selectedOrder.payments || []), newPayment]
+    const currentPayments = Array.isArray(selectedOrder.payments) && selectedOrder.payments.length > 0
+      ? selectedOrder.payments
+      : (Array.isArray(selectedOrder.splitPayments) ? selectedOrder.splitPayments.map((p, i) => ({
+          id: p.id || `PAY-${selectedOrder.id}-${i+1}`,
+          date: p.date || selectedOrder.confirmedAt || new Date().toISOString(),
+          amount: parseFloat(p.amount) || 0,
+          mode: p.mode || 'Cash',
+          ref: p.ref || 'Order Confirmation',
+          notes: p.notes || ''
+        })).filter(p => p.amount > 0) : [])
+
+    const updatedPayments = [...currentPayments, newPayment]
     const updatedOrder = {
       ...selectedOrder,
-      payments: updatedPayments
+      payments: updatedPayments,
+      splitPayments: updatedPayments
     }
 
     fetch(`/api/orders/${selectedOrder.id}`, {
@@ -187,9 +205,23 @@ export function PaymentsPage() {
       ref: '',
       notes: writeOffReason || 'Amount written off'
     }
+
+    const currentPayments = Array.isArray(selectedOrder.payments) && selectedOrder.payments.length > 0
+      ? selectedOrder.payments
+      : (Array.isArray(selectedOrder.splitPayments) ? selectedOrder.splitPayments.map((p, i) => ({
+          id: p.id || `PAY-${selectedOrder.id}-${i+1}`,
+          date: p.date || selectedOrder.confirmedAt || new Date().toISOString(),
+          amount: parseFloat(p.amount) || 0,
+          mode: p.mode || 'Cash',
+          ref: p.ref || 'Order Confirmation',
+          notes: p.notes || ''
+        })).filter(p => p.amount > 0) : [])
+
+    const updatedPayments = [...currentPayments, writeOffEntry]
     const updatedOrder = {
       ...selectedOrder,
-      payments: [...(selectedOrder.payments || []), writeOffEntry],
+      payments: updatedPayments,
+      splitPayments: updatedPayments,
       writeOffAmount: (selectedOrder.writeOffAmount || 0) + amt,
       writeOffAt: new Date().toISOString()
     }
@@ -294,22 +326,31 @@ export function PaymentsPage() {
     totalOutstanding += balance
     totalCollected += paid
     
-    if (o.payments) {
-      o.payments.forEach(p => {
-        allPaymentsList.push({
-          ...p,
-          orderId: o.id,
-          customer: o.customer
-        })
+    const pList = (Array.isArray(o.payments) && o.payments.length > 0)
+      ? o.payments
+      : (Array.isArray(o.splitPayments) ? o.splitPayments : [])
 
-        if (p.mode !== 'Write Off') {
-          const amt = parseFloat(p.amount) || 0
-          if (isToday(p.date)) {
-            todayCollected += amt
-          }
+    pList.forEach((p, idx) => {
+      const amt = parseFloat(p.amount) || 0
+      if (amt <= 0 && !p.mode) return
+      const paymentItem = {
+        id: p.id || `PAY-${o.id}-${idx + 1}`,
+        date: p.date || o.confirmedAt || o.date || new Date().toISOString(),
+        amount: amt,
+        mode: p.mode || 'Cash',
+        ref: p.ref || 'Order Confirmation',
+        notes: p.notes || '',
+        orderId: o.id,
+        customer: o.customer
+      }
+      allPaymentsList.push(paymentItem)
+
+      if (paymentItem.mode !== 'Write Off') {
+        if (isToday(paymentItem.date)) {
+          todayCollected += amt
         }
-      })
-    }
+      }
+    })
   })
 
   // Sort transactions by date and time descending (newest on top)
@@ -727,39 +768,50 @@ export function PaymentsPage() {
                 </div>
 
                 {/* Previous payments */}
-                {(selectedOrder.payments || []).length > 0 && (
-                  <div className="border-b border-slate-200">
-                    <p className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100">Previous Payments</p>
-                    {(selectedOrder.payments || []).map((p, i) => (
-                      <div key={i} className="flex justify-between items-center px-4 py-2 border-b border-slate-100 last:border-b-0">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-3 w-3 text-slate-400 flex-shrink-0" />
-                          {(() => {
-                            if (p.date && (p.date.includes('T') || p.date.includes(':'))) {
-                              const ts = fmtTimestamp(p.date)
-                              if (ts) {
-                                return (
-                                  <div className="flex flex-col text-[11px] leading-tight">
-                                    <span className="text-slate-700 font-semibold">{ts.date}</span>
-                                    <span className="text-[9px] text-slate-400">{ts.time}</span>
-                                  </div>
-                                )
+                {(() => {
+                  const prevList = (Array.isArray(selectedOrder.payments) && selectedOrder.payments.length > 0
+                    ? selectedOrder.payments
+                    : (Array.isArray(selectedOrder.splitPayments) ? selectedOrder.splitPayments : [])
+                  ).filter(p => (parseFloat(p.amount) || 0) > 0)
+
+                  if (prevList.length === 0) return null
+
+                  return (
+                    <div className="border-b border-slate-200">
+                      <p className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100">Previous Payments</p>
+                      {prevList.map((p, i) => (
+                        <div key={p.id || i} className="flex justify-between items-center px-4 py-2 border-b border-slate-100 last:border-b-0">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-3 w-3 text-slate-400 flex-shrink-0" />
+                            {(() => {
+                              const dateVal = p.date || selectedOrder.confirmedAt || selectedOrder.date
+                              if (dateVal && (dateVal.includes('T') || dateVal.includes(':'))) {
+                                const ts = fmtTimestamp(dateVal)
+                                if (ts) {
+                                  return (
+                                    <div className="flex flex-col text-[11px] leading-tight">
+                                      <span className="text-slate-700 font-semibold">{ts.date}</span>
+                                      <span className="text-[9px] text-slate-400">{ts.time}</span>
+                                    </div>
+                                  )
+                                }
                               }
-                            }
-                            return <span className="text-slate-500">{fmtDate(p.date)}</span>
-                          })()}
-                          <span className={cn(
-                            'rounded px-1.5 py-0.5 text-[10px] font-bold',
-                            p.mode === 'Write Off' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
-                          )}>{p.mode}</span>
+                              return <span className="text-slate-500">{fmtDate(dateVal)}</span>
+                            })()}
+                            <span className={cn(
+                              'rounded px-1.5 py-0.5 text-[10px] font-bold',
+                              p.mode === 'Write Off' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                            )}>{p.mode || 'Cash'}</span>
+                            {p.ref && <span className="text-[10px] text-slate-400 font-normal">({p.ref})</span>}
+                          </div>
+                          <span className={cn('font-bold', p.mode === 'Write Off' ? 'text-orange-600' : 'text-emerald-600')}>
+                            {p.mode === 'Write Off' ? '✂ ' : '+ '}₹{(parseFloat(p.amount) || 0).toLocaleString('en-IN')}
+                          </span>
                         </div>
-                        <span className={cn('font-bold', p.mode === 'Write Off' ? 'text-orange-600' : 'text-emerald-600')}>
-                          {p.mode === 'Write Off' ? '✂ ' : '+ '}₹{parseFloat(p.amount).toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )
+                })()}
                 <div className="flex justify-between items-center px-4 py-3">
                   <span className="font-semibold text-slate-600">Remaining Balance</span>
                   <span className="text-base font-extrabold text-red-600">₹{getOrderPaymentInfo(selectedOrder).balance.toLocaleString('en-IN')}</span>

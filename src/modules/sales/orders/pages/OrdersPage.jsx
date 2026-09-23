@@ -135,13 +135,18 @@ export function OrdersPage() {
     const newPayments = splitPayments
       .filter(r => parseFloat(r.amount) > 0 && r.mode)
       .map((r, i) => ({
-        id: `PAY-${Date.now().toString().slice(-5)}${i}`,
-        date: new Date().toISOString(),
+        id: r.id || `PAY-${Date.now().toString().slice(-5)}${i}`,
+        date: r.date || new Date().toISOString(),
         amount: parseFloat(r.amount),
         mode: r.mode,
-        ref: 'Order Confirmation',
-        notes: paymentNotes || ''
+        ref: r.ref || 'Order Confirmation',
+        notes: paymentNotes || r.notes || ''
       }))
+
+    // Separate any non-confirmation payments (e.g. payments recorded later via Payments page)
+    const existingPayments = Array.isArray(selectedOrder.payments) ? selectedOrder.payments : []
+    const laterRecordedPayments = existingPayments.filter(p => p.ref !== 'Order Confirmation')
+    const finalPayments = [...newPayments, ...laterRecordedPayments]
 
     const updatedOrder = {
       ...selectedOrder,
@@ -151,11 +156,11 @@ export function OrdersPage() {
       transport,
       vehicleInfo,
       handleBy,
-      splitPayments,
-      paidAmount: paidTotal,
+      splitPayments: finalPayments,
+      paidAmount: finalPayments.reduce((s, p) => s + (p.mode !== 'Write Off' ? (parseFloat(p.amount) || 0) : 0), 0),
       balanceMode,
       paymentNotes,
-      payments: [...(selectedOrder.payments || []), ...newPayments],
+      payments: finalPayments,
       confirmedAt: selectedOrder.confirmedAt || new Date().toISOString()
     }
 

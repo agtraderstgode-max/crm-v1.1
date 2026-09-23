@@ -230,6 +230,20 @@ const mapOrderFromSupabase = (o) => {
     }
   }
 
+  const rawSplit = Array.isArray(o.splitpayments) ? o.splitpayments : []
+  const payments = rawSplit
+    .filter(p => p && (parseFloat(p.amount) > 0 || p.mode))
+    .map((p, idx) => ({
+      id: p.id || `PAY-${o.id || 'ORD'}-${idx + 1}`,
+      date: p.date || o.confirmedat || o.date || (o.created_at ? new Date(o.created_at).toISOString() : new Date().toISOString()),
+      amount: parseFloat(p.amount) || 0,
+      mode: p.mode || 'Cash',
+      ref: p.ref || 'Order Confirmation',
+      notes: p.notes || ''
+    }))
+
+  const paidAmount = payments.reduce((sum, p) => sum + (p.mode !== 'Write Off' ? p.amount : 0), 0)
+
   return {
     id: o.id,
     customer: o.customer,
@@ -246,7 +260,9 @@ const mapOrderFromSupabase = (o) => {
     confirmedAt: o.confirmedat || '',
     dispatchedAt: o.dispatchedat || '',
     deliveredAt: o.deliveredat || '',
-    splitPayments: o.splitpayments || [],
+    splitPayments: rawSplit.length > 0 ? rawSplit : payments,
+    payments,
+    paidAmount,
     balanceMode: o.balancemode || '',
     paymentNotes,
     cancelReason,
@@ -260,6 +276,16 @@ const mapOrderToSupabase = (o) => {
   if (o.status === 'Cancelled' && o.cancelReason) {
     const at = o.cancelledAt || new Date().toISOString()
     notes = `[CANCELLED: ${o.cancelReason}] [AT: ${at}] ${notes}`.trim()
+  }
+
+  // Consolidate payments into splitpayments JSONB column
+  let finalPayments = []
+  if (Array.isArray(o.payments) && o.payments.length > 0) {
+    finalPayments = o.payments
+  } else if (Array.isArray(o.splitPayments) && o.splitPayments.length > 0) {
+    finalPayments = o.splitPayments
+  } else if (Array.isArray(o.splitpayments) && o.splitpayments.length > 0) {
+    finalPayments = o.splitpayments
   }
 
   return {
@@ -278,7 +304,7 @@ const mapOrderToSupabase = (o) => {
     confirmedat: o.confirmedAt || o.confirmedat || null,
     dispatchedat: o.dispatchedAt || o.dispatchedat || null,
     deliveredat: o.deliveredAt || o.deliveredat || null,
-    splitpayments: o.splitPayments || o.splitpayments || [],
+    splitpayments: finalPayments,
     balancemode: o.balanceMode || o.balancemode || null,
     paymentnotes: notes || null,
     itemsdetails: o.itemsDetails || o.itemsdetails || []
