@@ -1,6 +1,29 @@
 import { useState, useEffect } from 'react'
 import { Plus, Search, Edit, Trash2, X, Layers, Save } from 'lucide-react'
 
+export function getDefaultQuotationSqft(cat) {
+  if (cat.sqft_per_box_quotation != null && !isNaN(cat.sqft_per_box_quotation)) {
+    return parseFloat(cat.sqft_per_box_quotation);
+  }
+  const size = (cat.size || '').toUpperCase().trim();
+  const pcs = parseInt(cat.pcs_per_box || 0);
+  const dimMatch = size.match(/(\d+)\s*[X*x]\s*(\d+)/);
+  if (dimMatch && pcs > 0) {
+    const w = parseFloat(dimMatch[1]);
+    const h = parseFloat(dimMatch[2]);
+    return Number(((w * h * pcs) / 144).toFixed(2));
+  }
+  if (size.includes('4 FEET') || size.includes('4FEET')) {
+    if (size.includes('RISER') || (cat.name || '').toUpperCase().includes('RISER')) return 10.67;
+    return 16.0;
+  }
+  if (size.includes('3 FEET') || size.includes('3FEET')) {
+    if (size.includes('RISER') || (cat.name || '').toUpperCase().includes('RISER')) return 8.0;
+    return 12.0;
+  }
+  return parseFloat(cat.sqft_per_box || 15.5);
+}
+
 export function PriceCategoriesPage() {
   const [categories, setCategories] = useState([])
   const [products, setProducts] = useState([])
@@ -21,6 +44,7 @@ export function PriceCategoriesPage() {
     name: '',
     type: 'FLOOR',
     sqft_per_box: 15.5,
+    sqft_per_box_quotation: 16,
     pcs_per_box: 4,
     weight_per_box: 26,
     mrp: 1000,
@@ -84,6 +108,7 @@ export function PriceCategoriesPage() {
       name: '',
       type: 'FLOOR',
       sqft_per_box: 15.5,
+      sqft_per_box_quotation: 16,
       pcs_per_box: 4,
       weight_per_box: 26,
       mrp: 1000,
@@ -100,6 +125,7 @@ export function PriceCategoriesPage() {
       name: cat.name,
       type: cat.type || 'FLOOR',
       sqft_per_box: cat.sqft_per_box || 15.5,
+      sqft_per_box_quotation: cat.sqft_per_box_quotation != null ? cat.sqft_per_box_quotation : getDefaultQuotationSqft(cat),
       pcs_per_box: cat.pcs_per_box || 4,
       weight_per_box: cat.weight_per_box || 0,
       mrp: cat.mrp || 1000,
@@ -276,8 +302,11 @@ export function PriceCategoriesPage() {
                   <th className="px-5 py-3.5">Size</th>
                   <th className="px-5 py-3.5">Classification Name / Description</th>
                   <th className="px-5 py-3.5">Type</th>
-                  <th className="px-5 py-3.5">Sq.Ft / Box</th>
-                  <th className="px-5 py-3.5">Pcs / Box</th>
+                  <th className="px-5 py-3.5 whitespace-nowrap">Sq.Ft / Box</th>
+                  <th className="px-5 py-3.5 whitespace-nowrap text-center font-bold text-indigo-700 bg-indigo-50/60 border-x border-indigo-100">
+                    Sq.Ft / Box for Quotation
+                  </th>
+                  <th className="px-5 py-3.5 whitespace-nowrap">Pcs / Box</th>
                   <th className="px-5 py-3.5 text-orange-600 font-semibold">Wt / Box (kg)</th>
                   <th className="px-5 py-3.5 text-slate-900 font-bold">MRP (₹)</th>
                   <th className="px-5 py-3.5">Online Price (₹)</th>
@@ -300,6 +329,9 @@ export function PriceCategoriesPage() {
                       </span>
                     </td>
                     <td className="px-5 py-4 text-xs font-mono">{c.sqft_per_box}</td>
+                    <td className="px-5 py-4 text-xs font-mono font-bold text-indigo-700 text-center bg-indigo-50/30 border-x border-indigo-100/60">
+                      {c.sqft_per_box_quotation != null ? c.sqft_per_box_quotation : getDefaultQuotationSqft(c)}
+                    </td>
                     <td className="px-5 py-4 text-xs font-mono">{c.pcs_per_box}</td>
                     <td className="px-5 py-4 text-xs font-mono font-semibold text-orange-600">{c.weight_per_box || '—'}</td>
                     <td className="px-5 py-4 font-bold text-slate-900">₹{c.mrp}</td>
@@ -397,9 +429,9 @@ export function PriceCategoriesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Sq.Ft per Box</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Sq.Ft / Box</label>
                   <input
                     type="number"
                     step="0.01"
@@ -408,6 +440,17 @@ export function PriceCategoriesPage() {
                     onChange={e => setForm({ ...form, sqft_per_box: parseFloat(e.target.value) || 0 })}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-indigo-700 uppercase tracking-wide mb-1">Sq.Ft / Box for Quotation</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 16, 9, 8"
+                    value={form.sqft_per_box_quotation !== undefined ? form.sqft_per_box_quotation : ''}
+                    onChange={e => setForm({ ...form, sqft_per_box_quotation: parseFloat(e.target.value) || 0 })}
+                    className="w-full rounded-lg border border-indigo-200 bg-indigo-50/30 px-3 py-2 text-sm font-bold text-indigo-900 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
                 <div>

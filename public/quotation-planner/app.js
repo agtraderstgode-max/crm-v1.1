@@ -832,6 +832,7 @@ async function loadProductsIntoTileDB() {
       
       const sqftPrice = p.sqft_price || parseFloat(String(p.price || '').replace(/[^\d.]/g, '')) || 0;
       const coverage = p.sqft_per_box || getFallbackCoverage(dimension);
+      const billingArea = p.sqft_per_box_quotation || p.billingArea || 0;
       const weight = p.weight_per_box || 0;
 
       const matchIdx = findMatch(displayName, nameOnly, dimension);
@@ -840,6 +841,7 @@ async function loadProductsIntoTileDB() {
         // Enrich existing TILE_DB entry with pricing from CRM products
         if (sqftPrice > 0) TILE_DB[matchIdx].sqftPrice = sqftPrice;
         if (coverage > 0) TILE_DB[matchIdx].coverage = coverage;
+        if (billingArea > 0) TILE_DB[matchIdx].billingArea = billingArea;
         if (weight > 0) TILE_DB[matchIdx].weight = weight;
         enriched++;
       } else {
@@ -847,6 +849,7 @@ async function loadProductsIntoTileDB() {
         TILE_DB.push({
           name: displayName,
           coverage: coverage,
+          billingArea: billingArea,
           weight: weight || 0,
           sqftPrice: sqftPrice
         });

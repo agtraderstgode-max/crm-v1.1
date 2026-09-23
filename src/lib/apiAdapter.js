@@ -681,6 +681,28 @@ export async function handleApiRequest(url, options = {}) {
     }
   }
 
+function getQuotationSqft(cat, customMap = {}) {
+  if (customMap && customMap[cat.id] != null) return parseFloat(customMap[cat.id]);
+  if (cat.sqft_per_box_quotation != null) return parseFloat(cat.sqft_per_box_quotation);
+  const size = (cat.size || '').toUpperCase().trim();
+  const pcs = parseInt(cat.pcs_per_box || 0);
+  const dimMatch = size.match(/(\d+)\s*[X*x]\s*(\d+)/);
+  if (dimMatch && pcs > 0) {
+    const w = parseFloat(dimMatch[1]);
+    const h = parseFloat(dimMatch[2]);
+    return Number(((w * h * pcs) / 144).toFixed(2));
+  }
+  if (size.includes('4 FEET') || size.includes('4FEET')) {
+    if (size.includes('RISER') || (cat.name || '').toUpperCase().includes('RISER')) return 10.67;
+    return 16.0;
+  }
+  if (size.includes('3 FEET') || size.includes('3FEET')) {
+    if (size.includes('RISER') || (cat.name || '').toUpperCase().includes('RISER')) return 8.0;
+    return 12.0;
+  }
+  return parseFloat(cat.sqft_per_box || 15.5);
+}
+
   // ─── /api/products & /api/categories ───────────────────────────────────────
   if (pathname === '/api/products' && method === 'GET') {
     let prods = []
@@ -695,6 +717,12 @@ export async function handleApiRequest(url, options = {}) {
     }
     const { data: cats } = await supabase.from('categories').select('*').range(0, 4999)
     const categories = cats || []
+    let customMap = {}
+    try {
+      const { data: qSetting } = await supabase.from('settings').select('value').eq('key', 'category_quotation_sqft').maybeSingle()
+      if (qSetting && qSetting.value) customMap = qSetting.value
+    } catch (e) {}
+
     const joined = (prods || []).map(p => {
       if (p.category_id && p.category_id !== 'NO_CAT') {
         const cat = categories.find(c => c.id === p.category_id)
@@ -707,6 +735,7 @@ export async function handleApiRequest(url, options = {}) {
             price: `₹${cat.sqft_price}/sqft`,
             pcs_per_box: cat.pcs_per_box,
             sqft_per_box: cat.sqft_per_box,
+            sqft_per_box_quotation: getQuotationSqft(cat, customMap),
             weight_per_box: cat.weight_per_box,
             category: cat.name
           }
@@ -737,6 +766,7 @@ export async function handleApiRequest(url, options = {}) {
     delete updateData.sqft_price
     delete updateData.pcs_per_box
     delete updateData.sqft_per_box
+    delete updateData.sqft_per_box_quotation
     delete updateData.weight_per_box
     const { error } = await supabase.from('products').update(updateData).eq('id', id)
     if (error) return jsonResponse({ error: error.message }, 400)
@@ -750,8 +780,18 @@ export async function handleApiRequest(url, options = {}) {
   }
 
   if (pathname === '/api/categories' && method === 'GET') {
-    const { data } = await supabase.from('categories').select('*').range(0, 4999)
-    return jsonResponse(data || [])
+    const { data: rawCats } = await supabase.from('categories').select('*').range(0, 4999)
+    let customMap = {}
+    try {
+      const { data: qSetting } = await supabase.from('settings').select('value').eq('key', 'category_quotation_sqft').maybeSingle()
+      if (qSetting && qSetting.value) customMap = qSetting.value
+    } catch (e) {}
+
+    const enriched = (rawCats || []).map(c => ({
+      ...c,
+      sqft_per_box_quotation: getQuotationSqft(c, customMap)
+    }))
+    return jsonResponse(enriched)
   }
 
   if (pathname === '/api/categories' && method === 'POST') {
@@ -761,9 +801,12 @@ export async function handleApiRequest(url, options = {}) {
     const online_price = Math.round(mrp * (1 - discount / 100))
     const sqft_price = Math.round(online_price / (sqft || 1))
 
+    const catId = body.id ? body.id.trim().toUpperCase() : `CAT_${Date.now().toString().slice(-4)}`
     const newCategory = {
-      ...body,
-      id: body.id ? body.id.trim().toUpperCase() : `CAT_${Date.now().toString().slice(-4)}`,
+      id: catId,
+      size: body.size,
+      name: body.name,
+      type: body.type || 'FLOOR',
       sqft_per_box: sqft,
       pcs_per_box: parseInt(body.pcs_per_box || 0),
       weight_per_box: parseFloat(body.weight_per_box || 0),
@@ -774,7 +817,24 @@ export async function handleApiRequest(url, options = {}) {
     }
     const { error } = await supabase.from('categories').insert([newCategory])
     if (error) return jsonResponse({ error: error.message }, 400)
-    return jsonResponse(newCategory, 201)
+
+    if (body.sqft_per_box_quotation !== undefined) {
+      try {
+        const { data: qSetting } = await supabase.from('settings').select('value').eq('key', 'category_quotation_sqft').maybeSingle()
+        const currentMap = (qSetting && qSetting.value) || {}
+        currentMap[catId] = parseFloat(body.sqft_per_box_quotation)
+        await supabase.from('settings').upsert({
+          key: 'category_quotation_sqft',
+          value: currentMap,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' })
+      } catch (e) {}
+    }
+
+    return jsonResponse({
+      ...newCategory,
+      sqft_per_box_quotation: body.sqft_per_box_quotation != null ? parseFloat(body.sqft_per_box_quotation) : getQuotationSqft(newCategory)
+    }, 201)
   }
 
   const categoryIdMatch = pathname.match(/^\/api\/categories\/([^/]+)$/)
@@ -787,7 +847,9 @@ export async function handleApiRequest(url, options = {}) {
     const sqft_price = Math.round(online_price / (sqft || 1))
 
     const updated = {
-      ...body,
+      size: body.size,
+      name: body.name,
+      type: body.type,
       sqft_per_box: sqft,
       pcs_per_box: parseInt(body.pcs_per_box || 0),
       weight_per_box: parseFloat(body.weight_per_box || 0),
@@ -798,7 +860,26 @@ export async function handleApiRequest(url, options = {}) {
     }
     const { error } = await supabase.from('categories').update(updated).eq('id', id)
     if (error) return jsonResponse({ error: error.message }, 400)
-    return jsonResponse({ success: true, ...updated })
+
+    if (body.sqft_per_box_quotation !== undefined) {
+      try {
+        const { data: qSetting } = await supabase.from('settings').select('value').eq('key', 'category_quotation_sqft').maybeSingle()
+        const currentMap = (qSetting && qSetting.value) || {}
+        currentMap[id] = parseFloat(body.sqft_per_box_quotation)
+        await supabase.from('settings').upsert({
+          key: 'category_quotation_sqft',
+          value: currentMap,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' })
+      } catch (e) {}
+    }
+
+    return jsonResponse({
+      success: true,
+      id,
+      ...updated,
+      sqft_per_box_quotation: body.sqft_per_box_quotation != null ? parseFloat(body.sqft_per_box_quotation) : getQuotationSqft({ ...updated, id })
+    })
   }
 
   if (categoryIdMatch && method === 'DELETE') {
