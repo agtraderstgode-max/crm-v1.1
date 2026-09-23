@@ -1422,7 +1422,12 @@ function renderTable() {
     const animClass = isNew ? 'row-enter' : '';
     const style = isNew ? ` style="animation-delay:${Math.min(i * 0.04, 0.2)}s"` : '';
     return `
-    <tr id="row-${r.id}" class="${animClass}"${style}>
+    <tr id="row-${r.id}" data-id="${r.id}" class="${animClass}"${style}>
+      <td class="td-drag" style="text-align: center; width: 36px;">
+        <span class="drag-handle" title="Click and drag to reorder" data-id="${r.id}">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 4a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm0 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm0 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm6-12a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm0 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm0 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/></svg>
+        </span>
+      </td>
       <td class="td-si">${i + 1}</td>
       <td class="td-room">${escHtml(r.name)}</td>
       <td class="td-size">${(r.length > 0 && r.breadth > 0) ? `${r.length} × ${r.breadth}` : ''}</td>
@@ -1448,7 +1453,133 @@ function renderTable() {
     </tr>`;
   }).join('');
   lastAddedRoomId = null;
+  initTableDragAndDrop();
 }
+
+// ─── Table Drag and Drop Reordering ──────────────────────────────
+let draggedRowId = null;
+
+function initTableDragAndDrop() {
+  const tbody = planTbody();
+  if (!tbody) return;
+
+  const rowsList = Array.from(tbody.querySelectorAll('tr'));
+  rowsList.forEach(tr => {
+    const handle = tr.querySelector('.drag-handle');
+    if (!handle) return;
+
+    handle.addEventListener('mousedown', () => {
+      tr.setAttribute('draggable', 'true');
+    });
+
+    handle.addEventListener('touchstart', () => {
+      tr.setAttribute('draggable', 'true');
+    }, { passive: true });
+
+    tr.addEventListener('dragstart', (e) => {
+      if (tr.getAttribute('draggable') !== 'true') {
+        e.preventDefault();
+        return;
+      }
+      draggedRowId = parseInt(tr.dataset.id, 10);
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(draggedRowId));
+      
+      // Delay class addition slightly so the drag ghost retains full styling
+      setTimeout(() => {
+        tr.classList.add('is-dragging');
+      }, 0);
+    });
+
+    tr.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!draggedRowId || parseInt(tr.dataset.id, 10) === draggedRowId) return;
+
+      e.dataTransfer.dropEffect = 'move';
+      const rect = tr.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      const isAbove = e.clientY < mid;
+
+      rowsList.forEach(other => {
+        if (other !== tr) {
+          other.classList.remove('drop-target-above', 'drop-target-below');
+        }
+      });
+
+      if (isAbove) {
+        tr.classList.add('drop-target-above');
+        tr.classList.remove('drop-target-below');
+      } else {
+        tr.classList.add('drop-target-below');
+        tr.classList.remove('drop-target-above');
+      }
+    });
+
+    tr.addEventListener('dragleave', (e) => {
+      const rect = tr.getBoundingClientRect();
+      if (e.clientY < rect.top || e.clientY > rect.bottom || e.clientX < rect.left || e.clientX > rect.right) {
+        tr.classList.remove('drop-target-above', 'drop-target-below');
+      }
+    });
+
+    tr.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const targetId = parseInt(tr.dataset.id, 10);
+      if (!draggedRowId || targetId === draggedRowId) {
+        cleanupDragStates();
+        return;
+      }
+
+      const sourceIdx = rooms.findIndex(r => r.id === draggedRowId);
+      const targetIdx = rooms.findIndex(r => r.id === targetId);
+
+      if (sourceIdx !== -1 && targetIdx !== -1) {
+        const isAbove = tr.classList.contains('drop-target-above');
+        let newIdx = isAbove ? targetIdx : targetIdx + 1;
+        if (sourceIdx < newIdx) {
+          newIdx--;
+        }
+        
+        const [moved] = rooms.splice(sourceIdx, 1);
+        rooms.splice(newIdx, 0, moved);
+
+        renderTable();
+        renderSummary();
+
+        if (typeof activeEstimateId !== 'undefined' && activeEstimateId && typeof supabaseClient !== 'undefined' && supabaseClient) {
+          savePlanToCloudSilent();
+        }
+      }
+      cleanupDragStates();
+    });
+
+    tr.addEventListener('dragend', () => {
+      cleanupDragStates();
+    });
+  });
+}
+
+function cleanupDragStates() {
+  draggedRowId = null;
+  const tbody = planTbody();
+  if (!tbody) return;
+  tbody.querySelectorAll('tr').forEach(tr => {
+    tr.classList.remove('is-dragging', 'drop-target-above', 'drop-target-below');
+    tr.setAttribute('draggable', 'false');
+  });
+}
+
+// Reset draggable on mouseup anywhere
+window.addEventListener('mouseup', () => {
+  const tbody = planTbody();
+  if (tbody) {
+    tbody.querySelectorAll('tr[draggable="true"]').forEach(tr => {
+      if (!tr.classList.contains('is-dragging')) {
+        tr.setAttribute('draggable', 'false');
+      }
+    });
+  }
+});
 
 function updateRoomBoxes(id, newVal) {
   const val = parseInt(newVal, 10);
