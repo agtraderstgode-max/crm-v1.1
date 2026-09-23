@@ -717,9 +717,127 @@ export async function handleApiRequest(url, options = {}) {
     return jsonResponse(joined)
   }
 
+  if (pathname === '/api/products' && method === 'POST') {
+    const newProduct = {
+      ...body,
+      id: body.id || `TL-${Date.now().toString().slice(-4)}`
+    }
+    const { error } = await supabase.from('products').insert([newProduct])
+    if (error) return jsonResponse({ error: error.message }, 400)
+    return jsonResponse(newProduct, 201)
+  }
+
+  const productIdMatch = pathname.match(/^\/api\/products\/([^/]+)$/)
+  if (productIdMatch && method === 'PUT') {
+    const id = productIdMatch[1]
+    const updateData = { ...body }
+    delete updateData.category // calculated field
+    delete updateData.mrp
+    delete updateData.online_price
+    delete updateData.sqft_price
+    delete updateData.pcs_per_box
+    delete updateData.sqft_per_box
+    delete updateData.weight_per_box
+    const { error } = await supabase.from('products').update(updateData).eq('id', id)
+    if (error) return jsonResponse({ error: error.message }, 400)
+    return jsonResponse({ success: true, id, ...body })
+  }
+
+  if (productIdMatch && method === 'DELETE') {
+    const id = productIdMatch[1]
+    await supabase.from('products').delete().eq('id', id)
+    return jsonResponse({ success: true, id })
+  }
+
   if (pathname === '/api/categories' && method === 'GET') {
     const { data } = await supabase.from('categories').select('*').range(0, 4999)
     return jsonResponse(data || [])
+  }
+
+  if (pathname === '/api/categories' && method === 'POST') {
+    const mrp = parseFloat(body.mrp || 0)
+    const sqft = parseFloat(body.sqft_per_box || 1)
+    const discount = body.discount_pct !== undefined ? parseFloat(body.discount_pct) : 10
+    const online_price = Math.round(mrp * (1 - discount / 100))
+    const sqft_price = Math.round(online_price / (sqft || 1))
+
+    const newCategory = {
+      ...body,
+      id: body.id ? body.id.trim().toUpperCase() : `CAT_${Date.now().toString().slice(-4)}`,
+      sqft_per_box: sqft,
+      pcs_per_box: parseInt(body.pcs_per_box || 0),
+      weight_per_box: parseFloat(body.weight_per_box || 0),
+      mrp,
+      online_price,
+      sqft_price,
+      discount_pct: discount
+    }
+    const { error } = await supabase.from('categories').insert([newCategory])
+    if (error) return jsonResponse({ error: error.message }, 400)
+    return jsonResponse(newCategory, 201)
+  }
+
+  const categoryIdMatch = pathname.match(/^\/api\/categories\/([^/]+)$/)
+  if (categoryIdMatch && method === 'PUT') {
+    const id = categoryIdMatch[1]
+    const mrp = parseFloat(body.mrp || 0)
+    const sqft = parseFloat(body.sqft_per_box || 1)
+    const discount = body.discount_pct !== undefined ? parseFloat(body.discount_pct) : 10
+    const online_price = Math.round(mrp * (1 - discount / 100))
+    const sqft_price = Math.round(online_price / (sqft || 1))
+
+    const updated = {
+      ...body,
+      sqft_per_box: sqft,
+      pcs_per_box: parseInt(body.pcs_per_box || 0),
+      weight_per_box: parseFloat(body.weight_per_box || 0),
+      mrp,
+      online_price,
+      sqft_price,
+      discount_pct: discount
+    }
+    const { error } = await supabase.from('categories').update(updated).eq('id', id)
+    if (error) return jsonResponse({ error: error.message }, 400)
+    return jsonResponse({ success: true, ...updated })
+  }
+
+  if (categoryIdMatch && method === 'DELETE') {
+    const id = categoryIdMatch[1]
+    await supabase.from('categories').delete().eq('id', id)
+    return jsonResponse({ success: true, id })
+  }
+
+  // ─── /api/pricing-settings ──────────────────────────────────────────────────
+  if (pathname === '/api/pricing-settings' && method === 'GET') {
+    const saved = localStorage.getItem('crm_pricing_settings')
+    const settings = saved ? JSON.parse(saved) : { discount_percentage: 10 }
+    return jsonResponse(settings)
+  }
+
+  if (pathname === '/api/pricing-settings' && method === 'POST') {
+    const pct = parseFloat(body.discount_percentage || 10)
+    localStorage.setItem('crm_pricing_settings', JSON.stringify({ discount_percentage: pct }))
+
+    // Update all categories in Supabase with the new discount pct
+    const { data: cats } = await supabase.from('categories').select('*').range(0, 4999)
+    if (cats && cats.length > 0) {
+      const updatedCats = cats.map(c => {
+        const mrp = parseFloat(c.mrp || 0)
+        const sqft = parseFloat(c.sqft_per_box || 1)
+        const online_price = Math.round(mrp * (1 - pct / 100))
+        const sqft_price = Math.round(online_price / (sqft || 1))
+        return {
+          ...c,
+          discount_pct: pct,
+          online_price,
+          sqft_price
+        }
+      })
+      for (let i = 0; i < updatedCats.length; i += 20) {
+        await supabase.from('categories').upsert(updatedCats.slice(i, i + 20), { onConflict: 'id' })
+      }
+    }
+    return jsonResponse({ success: true, discount_percentage: pct })
   }
 
   // ─── /api/returns ──────────────────────────────────────────────────────────
