@@ -197,6 +197,176 @@ function setupDialogLightDismiss(dialogId) {
   }
 }
 
+// ─── Draft Persistence & Price Override Mapping ───────────────────
+function saveActiveDraftToStorage() {
+  try {
+    const custName = document.getElementById('customer-name')?.value || '';
+    const custPhone = document.getElementById('customer-phone')?.value || '';
+    const planDate = document.getElementById('plan-date')?.value || '';
+    const planNotes = document.getElementById('plan-notes')?.value || '';
+    const quoteCustName = document.getElementById('quote-customer-name')?.value || '';
+    const quoteNumber = document.getElementById('quote-number')?.value || '';
+    const quoteDate = document.getElementById('quote-date')?.value || '';
+    const quoteBy = document.getElementById('quote-by')?.value || '';
+    const quoteLoc = document.getElementById('quote-customer-location')?.value || '';
+
+    // If completely empty, remove draft
+    if (!activeEstimateId && rooms.length === 0 && !custName && quotationItems.length === 0) {
+      localStorage.removeItem('quotation_planner_draft');
+      return;
+    }
+
+    const draft = {
+      activeEstimateId: activeEstimateId || null,
+      customer_name: custName,
+      customer_phone: custPhone,
+      plan_date: planDate,
+      plan_notes: planNotes,
+      quote_customer_name: quoteCustName,
+      quote_number: quoteNumber,
+      quote_date: quoteDate,
+      quote_by: quoteBy,
+      quote_customer_location: quoteLoc,
+      rooms: rooms,
+      quotation_items: quotationItems,
+      next_id: nextId
+    };
+    localStorage.setItem('quotation_planner_draft', JSON.stringify(draft));
+    if (activeEstimateId) {
+      localStorage.setItem('active_estimate_id', String(activeEstimateId));
+    }
+  } catch (e) {
+    console.warn('Failed to save draft to localStorage:', e);
+  }
+}
+
+function mapLoadedQuotationItems(rawItems) {
+  if (!Array.isArray(rawItems)) return [];
+  return rawItems.map(item => {
+    const dbTile = TILE_DB.find(t => t.name.toLowerCase() === (item.description || '').toLowerCase());
+    const defaultCoverage = dbTile ? (dbTile.coverage || 0) : (item.coverage || 0);
+    const defaultBillingArea = dbTile ? (dbTile.billingArea || 0) : (item.billingArea || 0);
+    const defaultSqftRate = dbTile ? (dbTile.sqftPrice || dbTile.sqftRate || 0) : 0;
+    const multiplier = defaultBillingArea > 0 ? defaultBillingArea : defaultCoverage;
+    let defaultRate = 0;
+    if (defaultSqftRate > 0 && multiplier > 0) {
+      defaultRate = Math.round(defaultSqftRate * multiplier * 100) / 100;
+    } else if (dbTile) {
+      defaultRate = dbTile.price || 0;
+    }
+
+    const hasCustomPrice = item.isCustomPrice === true ||
+      item.customSqftRate != null ||
+      item.customRate != null ||
+      (item.sqftRate != null && defaultSqftRate > 0 && Math.abs(item.sqftRate - defaultSqftRate) > 0.001) ||
+      (item.rate != null && defaultRate > 0 && Math.abs(item.rate - defaultRate) > 0.001);
+
+    const effectiveRate = item.rate != null ? item.rate : defaultRate;
+    const effectiveSqftRate = item.sqftRate != null ? item.sqftRate : defaultSqftRate;
+
+    return {
+      ...item,
+      rate: effectiveRate,
+      sqftRate: effectiveSqftRate,
+      defaultRate: item.defaultRate != null ? item.defaultRate : defaultRate,
+      defaultSqftRate: item.defaultSqftRate != null ? item.defaultSqftRate : defaultSqftRate,
+      isCustomPrice: !!hasCustomPrice,
+      customRate: hasCustomPrice ? (item.customRate != null ? item.customRate : effectiveRate) : null,
+      customSqftRate: hasCustomPrice ? (item.customSqftRate != null ? item.customSqftRate : effectiveSqftRate) : null,
+      coverage: item.coverage != null ? item.coverage : defaultCoverage,
+      billingArea: item.billingArea != null ? item.billingArea : defaultBillingArea,
+      unit: item.unit || (dbTile ? dbTile.unit : 'Boxes'),
+      amount: item.amount != null ? item.amount : ((parseFloat(item.quantity) || 0) * effectiveRate)
+    };
+  });
+}
+
+function restoreActiveDraftFromStorage() {
+  try {
+    const raw = localStorage.getItem('quotation_planner_draft');
+    if (!raw) return false;
+    const draft = JSON.parse(raw);
+    if (!draft) return false;
+
+    if (draft.customer_name) {
+      const el = document.getElementById('customer-name');
+      if (el) el.value = draft.customer_name;
+    }
+    if (draft.customer_phone) {
+      const el = document.getElementById('customer-phone');
+      if (el) el.value = draft.customer_phone;
+    }
+    if (draft.plan_date) {
+      const el = document.getElementById('plan-date');
+      if (el) el.value = draft.plan_date;
+    }
+    if (draft.plan_notes) {
+      const el = document.getElementById('plan-notes');
+      if (el) el.value = draft.plan_notes;
+    }
+    if (draft.quote_customer_name) {
+      const el = document.getElementById('quote-customer-name');
+      if (el) el.value = draft.quote_customer_name;
+    }
+    if (draft.quote_number) {
+      const el = document.getElementById('quote-number');
+      if (el) el.value = draft.quote_number;
+    }
+    if (draft.quote_date) {
+      const el = document.getElementById('quote-date');
+      if (el) el.value = draft.quote_date;
+    }
+    if (draft.quote_by) {
+      const el = document.getElementById('quote-by');
+      if (el) el.value = draft.quote_by;
+    }
+    if (draft.quote_customer_location) {
+      const el = document.getElementById('quote-customer-location');
+      if (el) el.value = draft.quote_customer_location;
+    }
+
+    if (Array.isArray(draft.rooms)) rooms = draft.rooms;
+    if (Array.isArray(draft.quotation_items)) {
+      quotationItems = mapLoadedQuotationItems(draft.quotation_items);
+    }
+    if (draft.next_id) nextId = draft.next_id;
+    if (draft.activeEstimateId) activeEstimateId = draft.activeEstimateId;
+
+    renderTable();
+    renderSummary();
+    if (typeof renderQuotation === 'function') renderQuotation();
+    updateActiveEstimateStatus();
+
+    // If active estimate is in Supabase, verify with cloud silently
+    if (activeEstimateId && supabaseClient) {
+      supabaseClient
+        .from('estimates')
+        .select('*')
+        .eq('id', activeEstimateId)
+        .single()
+        .then(({ data, error }) => {
+          if (!error && data) {
+            if (Array.isArray(data.rooms) && data.rooms.length > 0) {
+              rooms = data.rooms;
+            }
+            if (Array.isArray(data.quotation_items) && data.quotation_items.length > 0) {
+              quotationItems = mapLoadedQuotationItems(data.quotation_items);
+            }
+            renderTable();
+            renderSummary();
+            if (typeof renderQuotation === 'function') renderQuotation();
+            saveActiveDraftToStorage();
+          }
+        })
+        .catch(err => console.warn('Could not sync active estimate from cloud on refresh:', err));
+    }
+    return true;
+  } catch (e) {
+    console.warn('Failed to restore draft from localStorage:', e);
+    return false;
+  }
+}
+
 // ─── Tile Database (from CSV) ───────────────────────────────────
 let TILE_DB = [
   // 48×24 PGVT
@@ -713,6 +883,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSupabase();
   loadSettings();
   updateActiveEstimateStatus();
+  restoreActiveDraftFromStorage();
 
   // Setup dialog close fallbacks for light-dismiss
   setupDialogLightDismiss('settings-modal');
@@ -914,6 +1085,14 @@ document.addEventListener('DOMContentLoaded', () => {
           saveEditedRoom();
         }
       });
+    }
+  });
+
+  ['customer-name', 'customer-phone', 'plan-date', 'plan-notes', 'quote-customer-name', 'quote-number', 'quote-date', 'quote-by', 'quote-customer-location'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => saveActiveDraftToStorage());
+      el.addEventListener('change', () => saveActiveDraftToStorage());
     }
   });
 
@@ -1763,6 +1942,13 @@ function clearAll() {
   nextId = 1;
   activeEstimateId = null;
   
+  try {
+    localStorage.removeItem('active_estimate_id');
+    localStorage.removeItem('quotation_planner_draft');
+  } catch (e) {
+    console.warn('Failed to clear localStorage drafts', e);
+  }
+  
   document.getElementById('customer-name').value = '';
   document.getElementById('customer-phone').value = '';
   document.getElementById('plan-notes').value = '';
@@ -1935,50 +2121,88 @@ function switchTab(tabName) {
 function generateQuotationFromPlan() {
   const tileMap = {};
   rooms.forEach(r => {
+    if (!r.tileName) return;
     if (!tileMap[r.tileName]) {
-      const dbTile = TILE_DB.find(t => t.name === r.tileName);
-      const coverage = dbTile ? (dbTile.coverage || 0) : 0;
+      const dbTile = TILE_DB.find(t => t.name.toLowerCase() === r.tileName.toLowerCase());
+      const coverage = dbTile ? (dbTile.coverage || 0) : (r.coverage || 0);
       const billingArea = dbTile ? (dbTile.billingArea || 0) : 0;
-      const sqftRate = dbTile ? (dbTile.sqftPrice || dbTile.sqftRate || 0) : 0;
+      const defaultSqftRate = dbTile ? (dbTile.sqftPrice || dbTile.sqftRate || 0) : 0;
       const unit = dbTile ? (dbTile.unit || 'Boxes') : 'Boxes';
       // Rate = billingArea * sqftRate; fallback to coverage * sqftRate or stored price
       const multiplier = billingArea > 0 ? billingArea : coverage;
-      let rate = 0;
-      if (sqftRate > 0 && multiplier > 0) {
-        rate = Math.round(sqftRate * multiplier * 100) / 100;
+      let defaultRate = 0;
+      if (defaultSqftRate > 0 && multiplier > 0) {
+        defaultRate = Math.round(defaultSqftRate * multiplier * 100) / 100;
       } else if (dbTile) {
-        rate = dbTile.price || 0;
+        defaultRate = dbTile.price || 0;
       }
       tileMap[r.tileName] = {
         description: r.tileName,
         quantity: 0,
-        rate: rate,
+        defaultRate: defaultRate,
+        defaultSqftRate: defaultSqftRate,
         coverage: coverage,
         billingArea: billingArea,
-        sqftRate: sqftRate,
         unit: unit
       };
     }
-    tileMap[r.tileName].quantity += r.boxesFinal;
+    tileMap[r.tileName].quantity += (r.boxesFinal || 0);
   });
   
+  // Index existing quotation items to preserve customer-specific price overrides
+  const existingMap = new Map();
+  quotationItems.forEach(item => {
+    if (item && item.description) {
+      existingMap.set(item.description.trim().toLowerCase(), item);
+    }
+  });
+
+  // Preserve non-tile custom line items (e.g. transport, labor, adhesive)
   const customItems = quotationItems.filter(item => item.isCustom);
   
-  let newItems = Object.values(tileMap).map(item => {
+  let newItems = Object.values(tileMap).map(tileInfo => {
+    const existing = existingMap.get(tileInfo.description.trim().toLowerCase());
+
+    const hasCustomPrice = existing && (
+      existing.isCustomPrice === true ||
+      existing.customSqftRate != null ||
+      existing.customRate != null ||
+      (existing.sqftRate != null && tileInfo.defaultSqftRate > 0 && Math.abs(existing.sqftRate - tileInfo.defaultSqftRate) > 0.001) ||
+      (existing.rate != null && tileInfo.defaultRate > 0 && Math.abs(existing.rate - tileInfo.defaultRate) > 0.001)
+    );
+
+    let effectiveRate = tileInfo.defaultRate;
+    let effectiveSqftRate = tileInfo.defaultSqftRate;
+    let customRate = null;
+    let customSqftRate = null;
+
+    if (hasCustomPrice) {
+      effectiveRate = (existing.customRate != null) ? existing.customRate : existing.rate;
+      effectiveSqftRate = (existing.customSqftRate != null) ? existing.customSqftRate : existing.sqftRate;
+      customRate = effectiveRate;
+      customSqftRate = effectiveSqftRate;
+    }
+
     return {
-      description: item.description,
-      quantity: item.quantity,
-      rate: item.rate,
-      sqftRate: item.sqftRate,
-      coverage: item.coverage,
-      billingArea: item.billingArea || 0,
-      amount: item.quantity * item.rate,
+      description: tileInfo.description,
+      quantity: tileInfo.quantity,
+      rate: effectiveRate,
+      sqftRate: effectiveSqftRate,
+      defaultRate: tileInfo.defaultRate,
+      defaultSqftRate: tileInfo.defaultSqftRate,
+      isCustomPrice: !!hasCustomPrice,
+      customRate: customRate,
+      customSqftRate: customSqftRate,
+      coverage: tileInfo.coverage,
+      billingArea: tileInfo.billingArea || 0,
+      amount: tileInfo.quantity * effectiveRate,
       isCustom: false,
-      unit: item.unit
+      unit: existing?.unit || tileInfo.unit
     };
   });
   
   quotationItems = [...newItems, ...customItems];
+  saveActiveDraftToStorage();
   
   renderQuotation();
 }
@@ -1988,7 +2212,7 @@ function renderQuotation() {
   const custName = document.getElementById('customer-name').value || '';
   
   const quoteCustName = document.getElementById('quote-customer-name');
-  if (quoteCustName) {
+  if (quoteCustName && !quoteCustName.value) {
     quoteCustName.value = custName;
   }
   
@@ -1997,6 +2221,15 @@ function renderQuotation() {
     const sqftRateVal = hasCoverage ? (item.sqftRate || 0) : '';
     const sqftDisabled = hasCoverage ? '' : 'disabled';
     const amountVal = (item.quantity * item.rate) || 0;
+    const isCustomPrice = item.isCustomPrice === true;
+    const sqftCustomClass = isCustomPrice ? 'custom-price-active' : '';
+    const rateCustomClass = isCustomPrice ? 'custom-price-active' : '';
+    const sqftTitle = isCustomPrice && item.defaultSqftRate ? 
+      `Custom price: ₹${item.sqftRate}/sqft (Default: ₹${item.defaultSqftRate}/sqft)` : 
+      (item.defaultSqftRate ? `Default: ₹${item.defaultSqftRate}/sqft` : '');
+    const rateTitle = isCustomPrice && item.defaultRate ? 
+      `Custom box rate: ₹${item.rate} (Default: ₹${item.defaultRate})` : 
+      (item.defaultRate ? `Default: ₹${item.defaultRate}` : '');
     
     const unitHTML = item.isCustom ? 
       `<input type="text" class="quote-input-unit" value="${escHtml(item.unit || 'Nos')}" oninput="handleQuoteInput(${idx}, 'unit', this.value)" style="width: 50px; font-size: 0.85rem !important; padding: 0.35rem 0.5rem !important; text-align: left; background: rgba(255,255,255,0.02) !important; border: 1px solid rgba(255,255,255,0.08) !important; color: var(--text); border-radius: var(--radius-sm);" />` :
@@ -2022,14 +2255,14 @@ function renderQuotation() {
         <td>
           <div class="stepper-wrapper">
             <button type="button" class="stepper-btn" ${sqftDisabled} onclick="stepNumberInput(this, -1)">−</button>
-            <input type="number" class="quote-input-sqft-rate" value="${sqftRateVal}" min="0" step="1" ${sqftDisabled} oninput="handleQuoteInput(${idx}, 'sqftRate', this.value)" placeholder="--" />
+            <input type="number" class="quote-input-sqft-rate ${sqftCustomClass}" value="${sqftRateVal}" min="0" step="1" ${sqftDisabled} oninput="handleQuoteInput(${idx}, 'sqftRate', this.value)" placeholder="--" title="${sqftTitle}" />
             <button type="button" class="stepper-btn" ${sqftDisabled} onclick="stepNumberInput(this, 1)">+</button>
           </div>
         </td>
         <td>
           <div class="stepper-wrapper">
             <button type="button" class="stepper-btn" onclick="stepNumberInput(this, -1)">−</button>
-            <input type="number" class="quote-input-rate" value="${item.rate}" min="0" step="1" oninput="handleQuoteInput(${idx}, 'rate', this.value)" />
+            <input type="number" class="quote-input-rate ${rateCustomClass}" value="${item.rate}" min="0" step="1" oninput="handleQuoteInput(${idx}, 'rate', this.value)" title="${rateTitle}" />
             <button type="button" class="stepper-btn" onclick="stepNumberInput(this, 1)">+</button>
           </div>
         </td>
@@ -2065,25 +2298,53 @@ function handleQuoteInput(idx, field, val) {
   } else if (field === 'unit') {
     item.unit = val;
   } else if (field === 'sqftRate') {
-    item.sqftRate = parseFloat(val) || 0;
+    const newSqftRate = parseFloat(val) || 0;
+    item.sqftRate = newSqftRate;
+    item.customSqftRate = newSqftRate;
+    item.isCustomPrice = true;
+    
     // Use billingArea if available, otherwise fall back to coverage
     const multiplier = (item.billingArea > 0) ? item.billingArea : item.coverage;
     if (multiplier > 0) {
       item.rate = Math.round((item.sqftRate * multiplier) * 100) / 100;
+      item.customRate = item.rate;
       const rateInput = tr.querySelector('.quote-input-rate');
-      if (rateInput) rateInput.value = item.rate;
+      if (rateInput) {
+        rateInput.value = item.rate;
+        rateInput.classList.add('custom-price-active');
+        if (item.defaultRate) rateInput.title = `Custom box rate: ₹${item.rate} (Default: ₹${item.defaultRate})`;
+      }
+    }
+    const sqftInput = tr.querySelector('.quote-input-sqft-rate');
+    if (sqftInput) {
+      sqftInput.classList.add('custom-price-active');
+      if (item.defaultSqftRate) sqftInput.title = `Custom price: ₹${item.sqftRate}/sqft (Default: ₹${item.defaultSqftRate}/sqft)`;
     }
     item.amount = item.quantity * item.rate;
     const amountCell = tr.querySelector('.td-amount');
     if (amountCell) amountCell.textContent = '₹ ' + item.amount.toFixed(2);
   } else if (field === 'rate') {
-    item.rate = parseFloat(val) || 0;
+    const newRate = parseFloat(val) || 0;
+    item.rate = newRate;
+    item.customRate = newRate;
+    item.isCustomPrice = true;
+    
     // Back-calculate sqftRate using billingArea (preferred) or coverage
     const rateMultiplier = (item.billingArea > 0) ? item.billingArea : item.coverage;
     if (rateMultiplier > 0) {
       item.sqftRate = Math.round((item.rate / rateMultiplier) * 100) / 100;
+      item.customSqftRate = item.sqftRate;
       const sqftInput = tr.querySelector('.quote-input-sqft-rate');
-      if (sqftInput) sqftInput.value = item.sqftRate;
+      if (sqftInput) {
+        sqftInput.value = item.sqftRate;
+        sqftInput.classList.add('custom-price-active');
+        if (item.defaultSqftRate) sqftInput.title = `Custom price: ₹${item.sqftRate}/sqft (Default: ₹${item.defaultSqftRate}/sqft)`;
+      }
+    }
+    const rateInput = tr.querySelector('.quote-input-rate');
+    if (rateInput) {
+      rateInput.classList.add('custom-price-active');
+      if (item.defaultRate) rateInput.title = `Custom box rate: ₹${item.rate} (Default: ₹${item.defaultRate})`;
     }
     item.amount = item.quantity * item.rate;
     const amountCell = tr.querySelector('.td-amount');
@@ -2091,6 +2352,10 @@ function handleQuoteInput(idx, field, val) {
   }
   
   calculateQuotationTotals();
+  saveActiveDraftToStorage();
+  if (typeof activeEstimateId !== 'undefined' && activeEstimateId && typeof supabaseClient !== 'undefined' && supabaseClient) {
+    savePlanToCloudSilent();
+  }
 }
 
 function handleQuoteChange(idx, field, val) {
@@ -2103,17 +2368,20 @@ function handleQuoteChange(idx, field, val) {
     if (dbTile) {
       item.coverage = dbTile.coverage || 0;
       item.billingArea = dbTile.billingArea || 0;
-      item.sqftRate = dbTile.sqftPrice || dbTile.sqftRate || 0;
+      item.defaultSqftRate = dbTile.sqftPrice || dbTile.sqftRate || 0;
+      item.sqftRate = item.defaultSqftRate;
       item.unit = dbTile.unit || 'Boxes';
       
-      // Rate = billingArea * sqftRate (new formula)
-      // Fallback: if no billingArea, use coverage * sqftRate or stored price
       const multiplier = (item.billingArea > 0) ? item.billingArea : item.coverage;
       if (item.sqftRate > 0 && multiplier > 0) {
-        item.rate = Math.round((item.sqftRate * multiplier) * 100) / 100;
+        item.defaultRate = Math.round((item.sqftRate * multiplier) * 100) / 100;
       } else {
-        item.rate = dbTile.price || 0;
+        item.defaultRate = dbTile.price || 0;
       }
+      item.rate = item.defaultRate;
+      item.isCustomPrice = false;
+      item.customRate = null;
+      item.customSqftRate = null;
       
       item.amount = item.quantity * item.rate;
       renderQuotation();
@@ -2122,9 +2390,18 @@ function handleQuoteChange(idx, field, val) {
         item.isCustom = true;
         item.coverage = 0;
         item.sqftRate = 0;
+        item.defaultSqftRate = 0;
+        item.defaultRate = 0;
+        item.isCustomPrice = false;
+        item.customRate = null;
+        item.customSqftRate = null;
         item.unit = 'Nos';
         renderQuotation();
       }
+    }
+    saveActiveDraftToStorage();
+    if (typeof activeEstimateId !== 'undefined' && activeEstimateId && typeof supabaseClient !== 'undefined' && supabaseClient) {
+      savePlanToCloudSilent();
     }
   }
 }
@@ -2134,7 +2411,12 @@ function addQuotationRow() {
     description: '',
     quantity: 1,
     rate: 0,
+    defaultRate: 0,
     sqftRate: 0,
+    defaultSqftRate: 0,
+    isCustomPrice: false,
+    customRate: null,
+    customSqftRate: null,
     coverage: 0,
     billingArea: 0,
     amount: 0,
@@ -2142,12 +2424,17 @@ function addQuotationRow() {
     unit: 'Nos'
   });
   renderQuotation();
+  saveActiveDraftToStorage();
 }
 
 function deleteQuotationRow(idx) {
   if (idx < 0 || idx >= quotationItems.length) return;
   quotationItems.splice(idx, 1);
   renderQuotation();
+  saveActiveDraftToStorage();
+  if (typeof activeEstimateId !== 'undefined' && activeEstimateId && typeof supabaseClient !== 'undefined' && supabaseClient) {
+    savePlanToCloudSilent();
+  }
 }
 
 function calculateQuotationTotals() {
@@ -2459,11 +2746,11 @@ function savePlanToCloud() {
     } else {
       if (data && data.length > 0) {
         activeEstimateId = data[0].id;
+        try { localStorage.setItem('active_estimate_id', String(activeEstimateId)); } catch(e) {}
         updateActiveEstimateStatus();
-        alert("Estimate saved to cloud successfully!");
-      } else {
-        alert("Estimate saved to cloud successfully!");
       }
+      saveActiveDraftToStorage();
+      alert("Estimate saved to cloud successfully!");
     }
   }).catch(err => {
     btn.disabled = false;
@@ -2528,6 +2815,8 @@ function savePlanToCloudSilent() {
   return query.then(({ data, error }) => {
     if (!error && data && data.length > 0) {
       activeEstimateId = data[0].id;
+      try { localStorage.setItem('active_estimate_id', String(activeEstimateId)); } catch(e) {}
+      saveActiveDraftToStorage();
       updateActiveEstimateStatus();
       console.log("Estimate autosaved to cloud silently.");
     }
@@ -2690,9 +2979,11 @@ function loadCloudEstimate(id) {
 
         // Restore state variables
         rooms = data.rooms || [];
-        quotationItems = data.quotation_items || [];
+        quotationItems = mapLoadedQuotationItems(data.quotation_items || []);
         nextId = data.next_id || (rooms.reduce((max, r) => Math.max(max, r.id), 0) + 1);
         activeEstimateId = id;
+        try { localStorage.setItem('active_estimate_id', String(id)); } catch(e) {}
+        saveActiveDraftToStorage();
 
         // Re-renders and updates
         updateLiveArea();
@@ -2732,6 +3023,7 @@ function deleteCloudEstimate(id) {
         // If it was the active estimate, reset activeEstimateId
         if (activeEstimateId === id) {
           activeEstimateId = null;
+          try { localStorage.removeItem('active_estimate_id'); } catch(e) {}
           updateActiveEstimateStatus();
         }
 
@@ -2831,11 +3123,13 @@ function handleLoadPlan(event) {
       
       // Restore variables
       rooms = data.rooms;
-      quotationItems = data.quotationItems || [];
+      quotationItems = mapLoadedQuotationItems(data.quotationItems || []);
       nextId = data.nextId || (rooms.reduce((max, r) => Math.max(max, r.id), 0) + 1);
       
       // Reset cloud state since we loaded a local file
       activeEstimateId = null;
+      try { localStorage.removeItem('active_estimate_id'); } catch(e) {}
+      saveActiveDraftToStorage();
       updateActiveEstimateStatus();
       
       // Trigger updates and re-renders

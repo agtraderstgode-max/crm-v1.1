@@ -1026,6 +1026,13 @@ input::placeholder { color: var(--text3); }
 .quote-input-qty { width: 110px; text-align: center; }
 .quote-input-sqft-rate { width: 110px; text-align: right; }
 .quote-input-rate { width: 135px; text-align: right; }
+.quote-input-sqft-rate.custom-price-active,
+.quote-input-rate.custom-price-active {
+  color: #38bdf8 !important;
+  border-color: rgba(56, 189, 248, 0.45) !important;
+  background: rgba(56, 189, 248, 0.08) !important;
+  font-weight: 600 !important;
+}
 .quote-table input:disabled {
   opacity: 0.35;
   cursor: not-allowed;
