@@ -7,7 +7,7 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, Eye, Gift, Sparkles,
   IndianRupee, Clock, FileText, Folder, ArrowRight, Compass,
   Layers, MessageCircle, AlertCircle, CheckCircle2, Receipt,
-  Check, ShoppingCart, Truck, ArrowUpDown, ArrowUp, ArrowDown, SlidersHorizontal
+  Check, ShoppingCart, Truck, ArrowUpDown, ArrowUp, ArrowDown, SlidersHorizontal, Car
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -18,6 +18,7 @@ const CATEGORIES = [
   { id: 'Builder', label: 'Builders', icon: Building2 },
   { id: 'Contractor', label: 'Contractors', icon: Briefcase },
   { id: 'Architect', label: 'Architects', icon: Compass },
+  { id: 'Auto', label: 'Auto', icon: Car },
   { id: 'Others', label: 'Others', icon: Users }
 ]
 
@@ -26,6 +27,8 @@ const TYPE_BADGE_STYLES = {
   'Builder':    'bg-blue-50 text-blue-700 border-blue-200/80',
   'Contractor': 'bg-amber-50 text-amber-700 border-amber-200/80',
   'Architect':  'bg-purple-50 text-purple-700 border-purple-200/80',
+  'Auto':       'bg-amber-100 text-amber-800 border-amber-300/80',
+  'Auto Driver':'bg-amber-100 text-amber-800 border-amber-300/80',
   'Supplier':   'bg-indigo-50 text-indigo-700 border-indigo-200/80',
   'Customer':   'bg-sky-50 text-sky-700 border-sky-200/80',
   'Others':     'bg-slate-100 text-slate-700 border-slate-200'
@@ -225,6 +228,7 @@ export function ContactsPage() {
       Builder: 0,
       Contractor: 0,
       Architect: 0,
+      Auto: 0,
       Others: 0
     }
 
@@ -234,6 +238,7 @@ export function ContactsPage() {
       else if (type === 'Builder') counts.Builder++
       else if (type === 'Contractor') counts.Contractor++
       else if (type === 'Architect') counts.Architect++
+      else if (type === 'Auto' || type === 'Auto Driver' || type === 'Auto Drivers') counts.Auto++
       else counts.Others++
     })
 
@@ -243,14 +248,21 @@ export function ContactsPage() {
   // Filtered Contacts
   const filteredContacts = useMemo(() => {
     return contacts.filter(item => {
+      const itemType = item.type || item.category || ''
       if (selectedCategory !== 'All') {
-        const matchCat = (item.type || item.category || '') === selectedCategory
-        if (!matchCat) return false
+        if (selectedCategory === 'Auto') {
+          if (itemType !== 'Auto' && itemType !== 'Auto Driver' && itemType !== 'Auto Drivers') return false
+        } else {
+          if (itemType !== selectedCategory) return false
+        }
       }
 
       if (typeFilter !== 'All') {
-        const matchType = (item.type || item.category || '') === typeFilter
-        if (!matchType) return false
+        if (typeFilter === 'Auto') {
+          if (itemType !== 'Auto' && itemType !== 'Auto Driver' && itemType !== 'Auto Drivers') return false
+        } else {
+          if (itemType !== typeFilter) return false
+        }
       }
 
       if (statusFilter !== 'All') {
@@ -1100,6 +1112,7 @@ export function ContactsPage() {
               <option value="Builder">Builder</option>
               <option value="Contractor">Contractor</option>
               <option value="Architect">Architect</option>
+              <option value="Auto">Auto</option>
               <option value="Others">Others</option>
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
@@ -2957,6 +2970,7 @@ export function ContactsPage() {
                     <option value="Builder">Builder</option>
                     <option value="Contractor">Contractor</option>
                     <option value="Architect">Architect</option>
+                    <option value="Auto">Auto</option>
                     <option value="Others">Others</option>
                   </select>
                 </div>

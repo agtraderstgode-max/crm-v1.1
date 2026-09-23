@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   Search, Plus, MapPin, Phone, X, Save, Navigation,
-  Users, Layers, Building2, Briefcase, Compass, CheckCircle2, UserCheck
+  Users, Layers, Building2, Briefcase, Compass, CheckCircle2, UserCheck, Car
 } from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
 
@@ -14,11 +14,12 @@ const getInitials = (name = '') => {
 }
 
 // ─── Constants ───────────────────────────────────────────────
-const SOURCES = ['Tv Ad','Flex Display','Social Media','Google','Referral','Engineer','Marketing Person','Mestri','Walk In','Company Lead']
+const SOURCES = ['Tv Ad','Flex Display','Social Media','Google','Referral','Engineer','Marketing Person','Mestri','Auto','Walk In','Company Lead']
 
 const REFERRAL_SUB_TABS = [
   { id: 'All', label: 'All Contacts', icon: Users },
   { id: 'Tile Layer', label: 'Tile Layers (Layer / Mestri)', icon: Layers },
+  { id: 'Auto', label: 'Auto Drivers', icon: Car },
   { id: 'Contractor', label: 'Contractors', icon: Briefcase },
   { id: 'Architect', label: 'Engineers & Architects', icon: Compass },
   { id: 'Builder', label: 'Builders', icon: Building2 }
@@ -50,7 +51,7 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 // ─── Table constants ──────────────────────────────────────────
 const FILTER_STATUSES = ['All Status','New Entry','Keep Tracking 2x','Keep Tracking 3x','Keep Tracking 4x','Customer Bought','Lost Customer']
-const FILTER_SOURCES  = ['All Sources','Tv Ad','Flex Display','Social Media','Google','Referral','Engineer','Marketing Person','Mestri','Walk In','Company Lead']
+const FILTER_SOURCES  = ['All Sources','Tv Ad','Flex Display','Social Media','Google','Referral','Engineer','Marketing Person','Mestri','Auto','Walk In','Company Lead']
 
 const PRIORITY_STYLE = {
   High:   'bg-red-100 text-red-700 border-red-200',
@@ -300,6 +301,9 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [] }) {
     } else if (s === 'Mestri') {
       setReferralSubTab('Tile Layer')
       if (!referredContact) setIsBrowsingList(true)
+    } else if (s === 'Auto') {
+      setReferralSubTab('Auto')
+      if (!referredContact) setIsBrowsingList(true)
     } else {
       // Direct / Non-referral sources
       setReferredContact(null)
@@ -309,13 +313,14 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [] }) {
 
   // Referral Category Sub-tab counts
   const subTabCounts = useMemo(() => {
-    const counts = { All: contacts.length, 'Tile Layer': 0, Contractor: 0, Architect: 0, Builder: 0 }
+    const counts = { All: contacts.length, 'Tile Layer': 0, Auto: 0, Contractor: 0, Architect: 0, Builder: 0 }
     contacts.forEach(c => {
-      const t = c.type || c.category
+      const t = c.type || c.category || ''
       if (t === 'Tile Layer') counts['Tile Layer']++
       else if (t === 'Contractor') counts.Contractor++
       else if (t === 'Architect') counts.Architect++
       else if (t === 'Builder') counts.Builder++
+      else if (t === 'Auto' || t === 'Auto Driver' || t === 'Auto Drivers') counts.Auto++
     })
     return counts
   }, [contacts])
@@ -323,14 +328,17 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [] }) {
   // Filtered Referral Contacts
   const filteredReferralContacts = useMemo(() => {
     return contacts.filter(c => {
+      const t = c.type || c.category || ''
       if (referralSubTab === 'Tile Layer') {
-        if (c.type !== 'Tile Layer' && c.category !== 'Tile Layer') return false
+        if (t !== 'Tile Layer') return false
+      } else if (referralSubTab === 'Auto') {
+        if (t !== 'Auto' && t !== 'Auto Driver' && t !== 'Auto Drivers') return false
       } else if (referralSubTab === 'Contractor') {
-        if (c.type !== 'Contractor' && c.category !== 'Contractor') return false
+        if (t !== 'Contractor') return false
       } else if (referralSubTab === 'Architect') {
-        if (c.type !== 'Architect' && c.category !== 'Architect') return false
+        if (t !== 'Architect') return false
       } else if (referralSubTab === 'Builder') {
-        if (c.type !== 'Builder' && c.category !== 'Builder') return false
+        if (t !== 'Builder') return false
       }
 
       if (contactSearch.trim()) {
@@ -350,13 +358,13 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [] }) {
     const toSave = { ...form }
     const baseSource = (form.source || '').split(' - ')[0]
 
-    if (referredContact && ['Referral', 'Engineer', 'Mestri'].includes(baseSource)) {
+    if (referredContact && ['Referral', 'Engineer', 'Mestri', 'Auto'].includes(baseSource)) {
       toSave.source = `${baseSource} - ${referredContact.name}`
       toSave.referredContactId = referredContact.id
       toSave.referredByName = referredContact.name
       toSave.referredByPhone = referredContact.phone
       toSave.referredByType = referredContact.type || referredContact.category || 'Tile Layer'
-    } else if (!['Referral', 'Engineer', 'Mestri'].includes(baseSource)) {
+    } else if (!['Referral', 'Engineer', 'Mestri', 'Auto'].includes(baseSource)) {
       toSave.referredContactId = ''
       toSave.referredByName = ''
       toSave.referredByPhone = ''
@@ -520,7 +528,7 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [] }) {
                       )}
                     >
                       <span>{s}</span>
-                      {['Referral', 'Engineer', 'Mestri'].includes(s) && (
+                      {['Referral', 'Engineer', 'Mestri', 'Auto'].includes(s) && (
                         <span className={cn("text-[9px] px-1 rounded-full", isSelected ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-500")}>
                           Contacts ▾
                         </span>
@@ -532,7 +540,7 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [] }) {
             </div>
 
             {/* Sub-panel: Contact Referrer Selector */}
-            {['Referral', 'Engineer', 'Mestri'].includes((form.source || '').split(' - ')[0]) && (
+            {['Referral', 'Engineer', 'Mestri', 'Auto'].includes((form.source || '').split(' - ')[0]) && (
               <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3.5 space-y-3 transition-all">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
