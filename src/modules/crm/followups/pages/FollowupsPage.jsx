@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CalendarCheck, Phone, Clock, AlertCircle, MessageSquare, Send, CheckCircle, X, ChevronRight, User } from 'lucide-react'
+import { CalendarCheck, Calendar, Phone, Clock, AlertCircle, MessageSquare, Send, CheckCircle, X, ChevronRight, User } from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
 
 export function FollowupsPage() {
@@ -10,7 +10,7 @@ export function FollowupsPage() {
 
   // Drawer Form State
   const [outcome, setOutcome] = useState('') // 'Keep Tracking' | 'Customer Bought' | 'Lost Customer' | 'No Answer'
-  const [snoozeDays, setSnoozeDays] = useState('3') // '3' | '5' | '7' | 'custom'
+  const [withinDays, setWithinDays] = useState('3')
   const [customDate, setCustomDate] = useState('')
   const [lostReason, setLostReason] = useState('')
   const [boughtAmt, setBoughtAmt] = useState('')
@@ -63,11 +63,39 @@ export function FollowupsPage() {
   const sortedOverdue = [...overdueLeads].sort((a, b) => getPriorityScore(b) - getPriorityScore(a))
   const sortedToday = [...todayLeads].sort((a, b) => getPriorityScore(b) - getPriorityScore(a))
 
+  const handleDaysChange = (days) => {
+    setWithinDays(days)
+    if (days !== '' && !isNaN(days)) {
+      const d = new Date()
+      d.setDate(d.getDate() + parseInt(days, 10))
+      setCustomDate(d.toISOString().split('T')[0])
+    } else {
+      setCustomDate('')
+    }
+  }
+
+  const handleDateChange = (dateVal) => {
+    setCustomDate(dateVal)
+    if (dateVal) {
+      const [y, m, d] = dateVal.split('-').map(Number)
+      const target = new Date(y, m - 1, d)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const diff = Math.round((target - today) / (1000 * 60 * 60 * 24))
+      setWithinDays(diff >= 0 ? String(diff) : '0')
+    } else {
+      setWithinDays('')
+    }
+  }
+
   const handleOpenDrawer = (lead) => {
     setSelectedLead(lead)
     setOutcome('')
-    setSnoozeDays('3')
-    setCustomDate('')
+    const initialDays = '3'
+    setWithinDays(initialDays)
+    const d = new Date()
+    d.setDate(d.getDate() + 3)
+    setCustomDate(d.toISOString().split('T')[0])
     setLostReason('')
     setBoughtAmt('')
     setRemarks(lead.remarks || '')   // ← Pre-fill with existing lead remarks
@@ -91,8 +119,6 @@ export function FollowupsPage() {
     }
     let finalExpectedAmt = selectedLead.expectedAmt
 
-    const todayDate = new Date()
-
     if (outcome === 'No Answer') {
       // No Answer = treated as Lost Customer (customer unreachable)
       finalStatus = 'Lost Customer'
@@ -101,16 +127,25 @@ export function FollowupsPage() {
     } 
     else if (outcome === 'Keep Tracking') {
       let days = 3
-      if (snoozeDays === '5') days = 5
-      else if (snoozeDays === '7') days = 7
-      else if (snoozeDays === 'custom' && customDate) {
-        const diffTime = Math.abs(new Date(customDate) - todayDate)
-        days = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      if (withinDays !== '' && !isNaN(withinDays)) {
+        days = parseInt(withinDays, 10)
+      } else if (customDate) {
+        const [y, m, d] = customDate.split('-').map(Number)
+        const target = new Date(y, m - 1, d)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const diff = Math.round((target - today) / (1000 * 60 * 60 * 24))
+        days = diff >= 0 ? diff : 0
       }
 
-      const next = new Date(todayDate)
-      next.setDate(todayDate.getDate() + days)
-      finalNextDate = next.toISOString().split('T')[0]
+      let nextDateVal = customDate
+      if (!nextDateVal) {
+        const next = new Date()
+        next.setDate(next.getDate() + days)
+        nextDateVal = next.toISOString().split('T')[0]
+      }
+
+      finalNextDate = nextDateVal
       finalWithinDays = String(days)
 
       // Increment Keep Tracking stages logically
@@ -296,34 +331,111 @@ export function FollowupsPage() {
 
               {/* Outcome Specific Options */}
               {outcome === 'Keep Tracking' && (
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest">Next Follow-up In</label>
-                  <div className="flex gap-2">
-                    {['3', '5', '7', 'custom'].map(day => (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest">
+                      Next Follow-up In
+                    </label>
+                    <span className="text-[11px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                      Auto-syncs Days &amp; Date
+                    </span>
+                  </div>
+
+                  {/* Quick Preset Buttons */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { days: '0', label: 'Today (0d)' },
+                      { days: '1', label: 'Tomorrow (1d)' },
+                      { days: '2', label: '2 Days' },
+                      { days: '3', label: '3 Days' },
+                      { days: '5', label: '5 Days' },
+                      { days: '7', label: '7 Days' }
+                    ].map(p => (
                       <button
-                        key={day}
+                        key={p.days}
                         type="button"
-                        onClick={() => setSnoozeDays(day)}
+                        onClick={() => handleDaysChange(p.days)}
                         className={cn(
-                          'flex-1 rounded-lg border py-2 text-xs font-semibold transition-all text-center capitalize',
-                          snoozeDays === day
+                          'flex-1 min-w-[70px] rounded-lg border py-2 px-2 text-xs font-semibold transition-all text-center cursor-pointer',
+                          withinDays === p.days
                             ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
-                            : 'border-slate-200 text-slate-500 hover:border-slate-300 bg-white'
+                            : 'border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-700 bg-white'
                         )}
                       >
-                        {day === 'custom' ? 'Custom Date' : `${day} Days`}
+                        {p.label}
                       </button>
                     ))}
                   </div>
 
-                  {snoozeDays === 'custom' && (
-                    <input
-                      type="date"
-                      min={todayStr}
-                      value={customDate}
-                      onChange={e => setCustomDate(e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    />
+                  {/* Manual Days Input and Date Picker Grid */}
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-1">
+                        Enter Days (0, 1, 2...)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          max="365"
+                          placeholder="e.g. 0, 1, 2"
+                          value={withinDays}
+                          onChange={e => handleDaysChange(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pr-12 text-sm text-slate-700 font-semibold outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
+                          days
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-1">
+                        Follow-up Date
+                      </label>
+                      <input
+                        type="date"
+                        min={todayStr}
+                        value={customDate}
+                        onChange={e => handleDateChange(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 font-semibold outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Live preview */}
+                  {customDate && (
+                    <div className="flex items-center gap-3 rounded-lg bg-blue-50 border border-blue-200 px-3.5 py-2.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 flex-shrink-0">
+                        <span className="text-xs font-bold text-blue-700">
+                          {withinDays !== '' ? withinDays : '?'}d
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-blue-800">
+                          {withinDays === '0'
+                            ? 'Follow-up Today'
+                            : withinDays === '1'
+                            ? 'Follow-up Tomorrow (in 1 day)'
+                            : `Follow-up in ${withinDays || '?'} days`}
+                        </p>
+                        <p className="text-[11px] text-blue-600">
+                          {(() => {
+                            try {
+                              const [y, m, d] = customDate.split('-').map(Number)
+                              return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
+                                weekday: 'long',
+                                day: 'numeric',
+                                month: 'long',
+                                year: 'numeric'
+                              })
+                            } catch {
+                              return customDate
+                            }
+                          })()}
+                        </p>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
