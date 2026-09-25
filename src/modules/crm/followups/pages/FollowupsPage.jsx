@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { CalendarCheck, Calendar, Phone, Clock, AlertCircle, MessageSquare, Send, CheckCircle, X, ChevronRight, User } from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
+import { DEFAULT_STAFF_LIST, resolveStaffName } from '../../leads/pages/LeadsPage'
 
 export function FollowupsPage() {
   const [leads, setLeads] = useState([])
+  const [staffMembers, setStaffMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedLead, setSelectedLead] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -12,6 +14,7 @@ export function FollowupsPage() {
   const [outcome, setOutcome] = useState('') // 'Keep Tracking' | 'Customer Bought' | 'Lost Customer' | 'No Answer'
   const [withinDays, setWithinDays] = useState('3')
   const [customDate, setCustomDate] = useState('')
+  const [attendedStaff, setAttendedStaff] = useState('Vanmathi.B')
   const [lostReason, setLostReason] = useState('')
   const [boughtAmt, setBoughtAmt] = useState('')
   const [remarks, setRemarks] = useState('')
@@ -20,7 +23,19 @@ export function FollowupsPage() {
 
   useEffect(() => {
     fetchLeads()
+    fetch('/api/staff')
+      .then(res => res.json())
+      .then(data => setStaffMembers(data || []))
+      .catch(err => console.warn("Error fetching staff:", err))
   }, [])
+
+  const staffList = useMemo(() => {
+    const activeStaff = (staffMembers || [])
+      .filter(s => s.status !== 'Inactive')
+      .map(s => s.name)
+      .filter(Boolean)
+    return Array.from(new Set(['Manager', ...activeStaff, 'Vanmathi.B', 'Boopana']))
+  }, [staffMembers])
 
   const fetchLeads = () => {
     setLoading(true)
@@ -99,6 +114,8 @@ export function FollowupsPage() {
     setLostReason('')
     setBoughtAmt('')
     setRemarks(lead.remarks || '')   // ← Pre-fill with existing lead remarks
+    const initialStaff = resolveStaffName(lead.attendedBy, staffMembers) || (staffList && staffList[1]) || 'Vanmathi.B'
+    setAttendedStaff(initialStaff)
     setDrawerOpen(true)
   }
 
@@ -109,11 +126,12 @@ export function FollowupsPage() {
     let finalNextDate = selectedLead.nextDate
     let finalWithinDays = selectedLead.withinDays
     let finalRemarks = (selectedLead.remarks || '').trim()
+    const staff = attendedStaff || resolveStaffName(selectedLead.attendedBy, staffMembers) || 'Vanmathi.B'
+
     if (remarks && remarks.trim() && remarks.trim() !== finalRemarks) {
       const now = new Date()
       const dateStr = now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
       const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()
-      const staff = selectedLead.attendedBy || 'Staff'
       const newEntry = `[${dateStr}, ${timeStr} • ${staff} • ${outcome}] ${remarks.trim()}`
       finalRemarks = finalRemarks ? `${finalRemarks}\n\n${newEntry}` : newEntry
     }
@@ -171,6 +189,7 @@ export function FollowupsPage() {
       outcome,
       status: finalStatus,
       remarks: remarks,
+      attendedBy: staff,
       lostReason: outcome === 'Lost Customer' ? lostReason : null,
       amount: outcome === 'Customer Bought' ? boughtAmt : null,
       nextDate: finalNextDate
@@ -183,6 +202,7 @@ export function FollowupsPage() {
       status: finalStatus,
       nextDate: finalNextDate,
       withinDays: finalWithinDays,
+      attendedBy: staff,
       expectedAmt: finalExpectedAmt,
       remarks: finalRemarks,
       history: updatedHistory
@@ -233,7 +253,7 @@ export function FollowupsPage() {
             ) : (
               <div className="space-y-3">
                 {sortedOverdue.map(l => (
-                  <LeadCard key={l.id} lead={l} onAction={() => handleOpenDrawer(l)} daysSince={getDaysSinceContact(l.date)} />
+                  <LeadCard key={l.id} lead={l} onAction={() => handleOpenDrawer(l)} daysSince={getDaysSinceContact(l.date)} staffRecords={staffMembers} />
                 ))}
               </div>
             )}
@@ -249,7 +269,7 @@ export function FollowupsPage() {
             ) : (
               <div className="space-y-3">
                 {sortedToday.map(l => (
-                  <LeadCard key={l.id} lead={l} onAction={() => handleOpenDrawer(l)} daysSince={getDaysSinceContact(l.date)} />
+                  <LeadCard key={l.id} lead={l} onAction={() => handleOpenDrawer(l)} daysSince={getDaysSinceContact(l.date)} staffRecords={staffMembers} />
                 ))}
               </div>
             )}
@@ -504,6 +524,39 @@ export function FollowupsPage() {
                 />
               </div>
 
+              {/* Call Attended By Staff */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-violet-600" />
+                    Call Attended By Staff
+                  </label>
+                  {attendedStaff && (
+                    <span className="text-xs font-bold text-violet-700 bg-violet-100 border border-violet-200 px-2.5 py-0.5 rounded-full">
+                      👤 {attendedStaff}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {staffList.map(staff => (
+                    <button
+                      key={staff}
+                      type="button"
+                      onClick={() => setAttendedStaff(staff)}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer',
+                        attendedStaff === staff
+                          ? 'bg-violet-600 border-violet-600 text-white shadow-sm ring-2 ring-violet-200'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:text-violet-700'
+                      )}
+                    >
+                      <span>👤</span>
+                      <span>{staff}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Call History Timeline */}
               <div className="space-y-3 pt-2">
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Call History Timeline</label>
@@ -516,7 +569,14 @@ export function FollowupsPage() {
                         <div className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-slate-300 border-2 border-white" />
                         <div className="flex items-center justify-between text-[11px] text-slate-400">
                           <span className="font-semibold text-slate-600">{h.timestamp}</span>
-                          <span className="font-medium bg-slate-100 rounded px-1.5 py-0.5">{h.outcome}</span>
+                          <div className="flex items-center gap-1.5">
+                            {h.attendedBy && (
+                              <span className="font-semibold text-violet-700 bg-violet-50 border border-violet-100 rounded px-1.5 py-0.5">
+                                👤 {h.attendedBy}
+                              </span>
+                            )}
+                            <span className="font-medium bg-slate-100 rounded px-1.5 py-0.5">{h.outcome}</span>
+                          </div>
                         </div>
                         <p className="text-xs text-slate-700 italic">"{h.remarks || 'No notes'}"</p>
                         {h.lostReason && <p className="text-[10px] font-bold text-red-500">Reason: {h.lostReason}</p>}
@@ -553,7 +613,7 @@ export function FollowupsPage() {
 }
 
 // ─── Reusable Lead Card Component ─────────────────────────────
-function LeadCard({ lead, onAction, daysSince }) {
+function LeadCard({ lead, onAction, daysSince, staffRecords = [] }) {
   const priorityStyle = {
     High:   'bg-red-50 border-red-100 text-red-700',
     Medium: 'bg-amber-50 border-amber-100 text-amber-700',
@@ -587,6 +647,12 @@ function LeadCard({ lead, onAction, daysSince }) {
           <span className="bg-slate-100 rounded px-2 py-0.5 text-slate-600 font-semibold">
             {lead.status}
           </span>
+          {lead.attendedBy && (
+            <span className="inline-flex items-center gap-1 bg-violet-50 text-violet-700 border border-violet-100 rounded px-2 py-0.5 text-xs font-semibold">
+              <span>👤</span>
+              <span>{resolveStaffName(lead.attendedBy, staffRecords)}</span>
+            </span>
+          )}
         </div>
 
         {lead.remarks && (
