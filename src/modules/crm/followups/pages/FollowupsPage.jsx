@@ -80,7 +80,15 @@ export function FollowupsPage() {
     let finalStatus = selectedLead.status
     let finalNextDate = selectedLead.nextDate
     let finalWithinDays = selectedLead.withinDays
-    let finalRemarks = remarks || 'Outcome logged'
+    let finalRemarks = (selectedLead.remarks || '').trim()
+    if (remarks && remarks.trim() && remarks.trim() !== finalRemarks) {
+      const now = new Date()
+      const dateStr = now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+      const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()
+      const staff = selectedLead.attendedBy || 'Staff'
+      const newEntry = `[${dateStr}, ${timeStr} • ${staff} • ${outcome}] ${remarks.trim()}`
+      finalRemarks = finalRemarks ? `${finalRemarks}\n\n${newEntry}` : newEntry
+    }
     let finalExpectedAmt = selectedLead.expectedAmt
 
     const todayDate = new Date()
