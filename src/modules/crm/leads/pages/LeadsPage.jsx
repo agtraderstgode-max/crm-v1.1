@@ -1567,7 +1567,7 @@ export function LeadsPage() {
                   </td>
 
                   {/* Comments / Notes — Immediately after Customer */}
-                  <td className="px-4 py-3 min-w-[240px] max-w-[340px]">
+                  <td className="px-4 py-3 min-w-[280px] max-w-[400px]">
                     {(() => {
                       const commentsList = parseComments(lead.remarks || '')
                       if (commentsList.length === 0) {
@@ -1582,34 +1582,36 @@ export function LeadsPage() {
                           </button>
                         )
                       }
-                      const latest = commentsList[commentsList.length - 1]
                       return (
                         <div 
                           onClick={() => setViewingCommentsLead(lead)}
-                          className="group cursor-pointer rounded-lg p-1.5 -m-1.5 hover:bg-blue-50/60 transition-all border border-transparent hover:border-blue-100"
-                          title="Click to view all comments or add new note"
+                          className="group cursor-pointer rounded-lg p-2 -m-1.5 hover:bg-blue-50/50 transition-all border border-transparent hover:border-blue-100 space-y-2 max-h-56 overflow-y-auto"
+                          title="Click to add new comment or manage notes"
                         >
-                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                            {latest.timestamp && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200/80 px-1.5 py-0.5 rounded">
-                                <Clock className="w-2.5 h-2.5 text-slate-400" />
-                                {latest.timestamp}
-                              </span>
-                            )}
-                            {latest.author && (
-                              <span className="inline-flex items-center text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200/80 px-1.5 py-0.5 rounded">
-                                {latest.author}
-                              </span>
-                            )}
-                            {commentsList.length > 1 && (
-                              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">
-                                {commentsList.length} notes
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[13px] font-medium text-slate-800 leading-snug line-clamp-2 group-hover:text-blue-900 transition-colors">
-                            {latest.text}
-                          </p>
+                          {commentsList.map((c, idx) => (
+                            <div key={idx} className={cn("space-y-0.5", idx > 0 && "pt-1.5 border-t border-slate-100")}>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {c.timestamp ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200/80 px-1.5 py-0.5 rounded">
+                                    <Clock className="w-2.5 h-2.5 text-slate-400" />
+                                    {c.timestamp}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                    Initial Note
+                                  </span>
+                                )}
+                                {c.author && (
+                                  <span className="inline-flex items-center text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200/80 px-1.5 py-0.5 rounded">
+                                    {c.author}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[13px] font-medium text-slate-800 leading-snug break-words">
+                                {c.text}
+                              </p>
+                            </div>
+                          ))}
                         </div>
                       )
                     })()}
