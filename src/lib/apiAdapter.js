@@ -52,6 +52,12 @@ const mapStaffToSupabase = (s) => ({
   incentives: s.incentives || []
 })
 
+const resolveLegacyStaff = (raw) => {
+  if (raw === 'Staff 1' || raw === 'STF-001') return 'Vanmathi.B'
+  if (raw === 'Staff 2' || raw === 'STF-002') return 'Boopana'
+  return raw || ''
+}
+
 const mapLeadFromSupabase = (l) => {
   const history = Array.isArray(l.history) ? l.history : []
   const refMeta = history.find(h => h && h.type === 'REFERRAL_MAPPING') || {}
@@ -81,7 +87,7 @@ const mapLeadFromSupabase = (l) => {
     nextDate: l.nextdate || '',
     withinDays: l.withindays || '',
     remarks: l.remarks || '',
-    attendedBy: l.attendedby || '',
+    attendedBy: resolveLegacyStaff(l.attendedby),
     history
   }
 }
@@ -134,7 +140,7 @@ const mapCustomerFromSupabase = (c) => ({
   location: c.location || '',
   custType: c.custtype || '',
   expectedAmt: c.expectedamt || '',
-  attendedBy: c.attendedby || '',
+  attendedBy: resolveLegacyStaff(c.attendedby),
   remarks: c.remarks || '',
   source: c.source || '',
   size: c.size || '',

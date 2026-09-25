@@ -52,6 +52,8 @@ export function parseComments(rawText = '') {
         timestamp = timePart.trim()
         author = authorParts.join(' - ').trim()
       }
+      if (author === 'Staff 1') author = 'Vanmathi.B'
+      if (author === 'Staff 2') author = 'Boopana'
       list.push({ header, timestamp, author, text: commentBody, isLegacy: false })
     }
     return list
@@ -78,7 +80,23 @@ const CUSTOMER_TYPES = ['Owner','Builder','Contractor','Architect']
 const STAGES = ['Planning','Construction Started','Flooring Stage','Immediate Requirement']
 const PRIORITIES = ['High','Medium','Low']
 const STATUSES_LIST = ['New Entry','Keep Tracking 2x','Keep Tracking 3x','Keep Tracking 4x','Customer Bought','Lost Customer']
-const STAFF_LIST = ['Manager', 'Staff 1', 'Staff 2', 'Staff 3']
+export const DEFAULT_STAFF_LIST = ['Manager', 'Vanmathi.B', 'Boopana']
+
+export function resolveStaffName(raw = '', staffRecords = []) {
+  if (!raw) return ''
+  const t = String(raw).trim()
+  if (!t) return ''
+  if (t === 'Staff 1' || t === 'STF-001') {
+    const found = staffRecords.find(s => s.id === 'STF-001') || staffRecords[0]
+    return found ? found.name : 'Vanmathi.B'
+  }
+  if (t === 'Staff 2' || t === 'STF-002') {
+    const found = staffRecords.find(s => s.id === 'STF-002') || staffRecords[1]
+    return found ? found.name : 'Boopana'
+  }
+  const match = staffRecords.find(s => s.name?.toLowerCase() === t.toLowerCase() || s.id === t)
+  return match ? match.name : t
+}
 
 // Showroom coordinates (AG TRADERS, TIRUCHENGODE)
 const SHOWROOM_LAT = 11.3477
@@ -232,7 +250,7 @@ function NameAutocomplete({ value, onChange, onSelect, leads }) {
   )
 }
 
-function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [] }) {
+function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [], staffList = DEFAULT_STAFF_LIST, staffRecords = [] }) {
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({
     date: today, name: '', phone: '', location: '',
@@ -279,7 +297,7 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [] }) {
         status: lead.status || 'New Entry',
         nextDate: lead.nextDate || '',
         remarks: lead.remarks || '',
-        attendedBy: lead.attendedBy || '',
+        attendedBy: resolveStaffName(lead.attendedBy, staffRecords) || '',
       })
 
       // Resolve existing referrer contact
@@ -985,7 +1003,7 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [] }) {
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
             <FieldLabel text="Lead Attended By" />
             <div className="flex flex-wrap gap-2 mt-1">
-              {STAFF_LIST.map(staff => (
+              {(staffList || DEFAULT_STAFF_LIST).map(staff => (
                 <button
                   key={staff}
                   type="button"
@@ -1107,9 +1125,9 @@ function AddLeadDrawer({ open, onClose, onSave, leads, lead, contacts = [] }) {
 }
 
 // ─── Lead Comments History & Quick-Add Modal ───────────────────
-function LeadCommentsModal({ lead, onClose, onUpdateLead }) {
+function LeadCommentsModal({ lead, onClose, onUpdateLead, staffList = DEFAULT_STAFF_LIST, staffRecords = [] }) {
   const [newNote, setNewNote] = useState('')
-  const [attendedStaff, setAttendedStaff] = useState(lead?.attendedBy || 'Staff 1')
+  const [attendedStaff, setAttendedStaff] = useState(() => resolveStaffName(lead?.attendedBy, staffRecords) || (staffList && staffList[1]) || 'Vanmathi.B')
   const [saving, setSaving] = useState(false)
 
   if (!lead) return null
@@ -1234,7 +1252,7 @@ function LeadCommentsModal({ lead, onClose, onUpdateLead }) {
                 onChange={e => setAttendedStaff(e.target.value)}
                 className="text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
               >
-                {STAFF_LIST.map(s => (
+                {(staffList || DEFAULT_STAFF_LIST).map(s => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
@@ -1278,6 +1296,7 @@ function LeadCommentsModal({ lead, onClose, onUpdateLead }) {
 export function LeadsPage() {
   const [leads, setLeads] = useState([])
   const [contacts, setContacts] = useState([])
+  const [staffMembers, setStaffMembers] = useState([])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('All Status')
@@ -1294,7 +1313,7 @@ export function LeadsPage() {
     setViewingCommentsLead(updatedLead)
   }
 
-  // Fetch leads and contacts from backend
+  // Fetch leads, contacts and staff from backend
   useEffect(() => {
     fetch('/api/leads')
       .then(res => res.json())
@@ -1311,7 +1330,20 @@ export function LeadsPage() {
       .then(res => res.json())
       .then(data => setContacts(data || []))
       .catch(err => console.warn("Error fetching contacts:", err))
+
+    fetch('/api/staff')
+      .then(res => res.json())
+      .then(data => setStaffMembers(data || []))
+      .catch(err => console.warn("Error fetching staff:", err))
   }, [])
+
+  const staffList = useMemo(() => {
+    const activeStaff = (staffMembers || [])
+      .filter(s => s.status !== 'Inactive')
+      .map(s => s.name)
+      .filter(Boolean)
+    return Array.from(new Set(['Manager', ...activeStaff, 'Vanmathi.B', 'Boopana']))
+  }, [staffMembers])
 
   const handleSave = (lead) => {
     if (lead.id) {
@@ -1414,13 +1446,24 @@ export function LeadsPage() {
 
   return (
     <>
-      <AddLeadDrawer open={drawerOpen} onClose={() => { setDrawerOpen(false); setSelectedLead(null); }} onSave={handleSave} leads={leads} lead={selectedLead} contacts={contacts} />
+      <AddLeadDrawer
+        open={drawerOpen}
+        onClose={() => { setDrawerOpen(false); setSelectedLead(null); }}
+        onSave={handleSave}
+        leads={leads}
+        lead={selectedLead}
+        contacts={contacts}
+        staffList={staffList}
+        staffRecords={staffMembers}
+      />
 
       {viewingCommentsLead && (
         <LeadCommentsModal
           lead={viewingCommentsLead}
           onClose={() => setViewingCommentsLead(null)}
           onUpdateLead={handleUpdateLeadFromModal}
+          staffList={staffList}
+          staffRecords={staffMembers}
         />
       )}
 
@@ -1720,7 +1763,7 @@ export function LeadsPage() {
                   <td className="px-4 py-3">
                     {lead.attendedBy ? (
                       <span className="inline-block rounded-full bg-violet-100 text-violet-700 border border-violet-200 px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap">
-                        {lead.attendedBy}
+                        {resolveStaffName(lead.attendedBy, staffMembers)}
                       </span>
                     ) : (
                       <span className="text-slate-300 text-xs">—</span>

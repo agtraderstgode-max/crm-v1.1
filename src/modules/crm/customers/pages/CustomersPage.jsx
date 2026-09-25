@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Users, Search, Plus, Phone, MapPin, X, Calendar, User, FileText, DollarSign, HelpCircle, ArrowDownRight, Check, Trash } from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
+import { DEFAULT_STAFF_LIST, resolveStaffName } from '../../leads/pages/LeadsPage'
 
 const TYPE_COLOR = {
   Owner:      'bg-blue-100 text-blue-700 border-blue-200',
@@ -145,7 +146,7 @@ function NameAutocomplete({ value, onChange, onSelect, leads }) {
   )
 }
 
-function AddCustomerDrawer({ open, onClose, onSave, leads, customer }) {
+function AddCustomerDrawer({ open, onClose, onSave, leads, customer, staffList = DEFAULT_STAFF_LIST, staffRecords = [] }) {
   const today = new Date().toISOString().split('T')[0]
 
   const [form, setForm] = useState({
@@ -174,7 +175,7 @@ function AddCustomerDrawer({ open, onClose, onSave, leads, customer }) {
         stage: customer.stage || '',
         expectedAmt: customer.expectedAmt || '',
         remarks: customer.remarks || '',
-        attendedBy: customer.attendedBy || '',
+        attendedBy: resolveStaffName(customer.attendedBy, staffRecords) || '',
       })
     } else {
       setForm({
@@ -474,7 +475,7 @@ function AddCustomerDrawer({ open, onClose, onSave, leads, customer }) {
             <div>
               <FieldLabel text="Attended By" />
               <div className="flex flex-wrap gap-2">
-                {['Ramesh', 'Siva', 'Admin'].map(staff => (
+                {(staffList || DEFAULT_STAFF_LIST).map(staff => (
                   <button
                     key={staff}
                     type="button"
@@ -531,6 +532,7 @@ export function CustomersPage() {
   const [customers, setCustomers] = useState([])
   const [leads, setLeads] = useState([])
   const [orders, setOrders] = useState([])
+  const [staffMembers, setStaffMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('All Types')
@@ -567,11 +569,27 @@ export function CustomersPage() {
       .catch(err => console.error("Error fetching orders:", err))
   }
 
+  const fetchStaff = () => {
+    fetch('/api/staff')
+      .then(res => res.json())
+      .then(data => setStaffMembers(data || []))
+      .catch(err => console.warn("Error fetching staff:", err))
+  }
+
   useEffect(() => {
     fetchCustomers()
     fetchLeads()
     fetchOrders()
+    fetchStaff()
   }, [])
+
+  const staffList = useMemo(() => {
+    const activeStaff = (staffMembers || [])
+      .filter(s => s.status !== 'Inactive')
+      .map(s => s.name)
+      .filter(Boolean)
+    return Array.from(new Set(['Manager', ...activeStaff, 'Vanmathi.B', 'Boopana']))
+  }, [staffMembers])
 
   const getCustomerOrderStatus = (customerName) => {
     if (!customerName) return 'New Customer'
@@ -817,7 +835,7 @@ export function CustomersPage() {
                     })()}
                   </td>
                   <td className="px-5 py-3.5 font-medium text-slate-600">
-                    {c.attendedBy ? `👤 ${c.attendedBy}` : <span className="text-slate-300 text-xs">—</span>}
+                    {c.attendedBy ? `👤 ${resolveStaffName(c.attendedBy, staffMembers)}` : <span className="text-slate-300 text-xs">—</span>}
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3 justify-end">
@@ -848,6 +866,8 @@ export function CustomersPage() {
         onSave={handleSave}
         leads={leads}
         customer={selectedCustomer}
+        staffList={staffList}
+        staffRecords={staffMembers}
       />
     </div>
   )
