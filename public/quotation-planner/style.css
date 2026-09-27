@@ -906,22 +906,22 @@ input::placeholder { color: var(--text3); }
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--card-border);
   border-radius: var(--radius);
-  padding: 2.5rem 3rem;
+  padding: 1.5rem 2rem;
   box-shadow: var(--shadow);
-  max-width: 1000px;
+  max-width: 950px;
   margin: 0 auto 1.5rem;
   color: var(--text);
   font-family: var(--font);
-  font-size: 1.15rem;
+  font-size: 0.95rem;
   animation: sectionIn 0.55s var(--ease-out);
 }
 .quote-title-centered {
   text-align: center;
   font-family: var(--font-title);
-  font-size: 2.6rem; /* Increased from 2.2rem */
+  font-size: 1.6rem;
   font-weight: 800;
   letter-spacing: 0.15em;
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.25rem;
   background: linear-gradient(135deg, #a78bfa, #6366f1);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -930,8 +930,8 @@ input::placeholder { color: var(--text3); }
 .quote-header-grid {
   display: grid;
   grid-template-columns: 1.5fr 1fr;
-  gap: 2rem;
-  margin-bottom: 2rem;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 .quote-to-block {
   display: flex;
@@ -939,10 +939,10 @@ input::placeholder { color: var(--text3); }
   gap: 0.35rem;
 }
 .quote-to-block label {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 .quote-to-block input {
-  font-size: 1.35rem; /* Increased from 1.15rem */
+  font-size: 1.05rem;
   font-weight: 700;
   border-bottom: 1.5px solid rgba(255, 255, 255, 0.15) !important;
   border-top: none !important;
@@ -959,23 +959,23 @@ input::placeholder { color: var(--text3); }
 .quote-meta-block {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.5rem;
 }
 .quote-meta-row {
   display: grid;
-  grid-template-columns: 130px 1fr;
+  grid-template-columns: 120px 1fr;
   align-items: center;
   gap: 0.5rem;
 }
 .quote-meta-row label {
   text-align: right;
-  font-size: 0.85rem; /* Increased from 0.72rem */
+  font-size: 0.78rem;
   font-weight: 700;
 }
 .quote-meta-row input {
-  font-size: 1rem; /* Increased from 0.85rem */
+  font-size: 0.88rem;
   font-weight: 600;
-  padding: 0.4rem 0.6rem !important;
+  padding: 0.25rem 0.5rem !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-top: none !important;
   border-left: none !important;
@@ -997,15 +997,15 @@ input::placeholder { color: var(--text3); }
 .quote-table th {
   background: rgba(255, 255, 255, 0.02);
   border-bottom: 2px solid var(--card-border);
-  padding: 0.85rem 1rem;
-  font-size: 0.9rem; /* Increased from 0.75rem */
+  padding: 0.6rem 0.8rem;
+  font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text2);
 }
 .quote-table td {
-  padding: 0.9rem 1.1rem;
+  padding: 0.55rem 0.75rem;
   border-bottom: 1px solid var(--card-border);
   vertical-align: middle;
 }
@@ -1015,8 +1015,8 @@ input::placeholder { color: var(--text3); }
   border-radius: var(--radius-sm);
   color: var(--text);
   font-family: var(--font);
-  font-size: 1rem !important; /* Increased from 0.85rem */
-  padding: 0.55rem 0.85rem !important;
+  font-size: 0.88rem !important;
+  padding: 0.35rem 0.55rem !important;
 }
 .quote-table input:focus {
   border-color: var(--primary-l) !important;
@@ -1043,25 +1043,25 @@ input::placeholder { color: var(--text3); }
   text-align: right;
   font-weight: 700;
   color: var(--text);
-  font-size: 1.1rem; /* Increased from 0.95rem */
+  font-size: 0.92rem;
 }
 .quote-total-row td {
   border-top: 2px solid var(--card-border);
   border-bottom: none;
-  font-size: 1.2rem; /* Increased from 1.05rem */
+  font-size: 1.05rem;
 }
 
 /* ─── Words Box ──────────────────────────────────────────────── */
 .quote-words-box {
-  margin-top: 2.2rem;
+  margin-top: 1.5rem;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-sm);
-  padding: 1rem 1.2rem;
+  padding: 0.75rem 1rem;
 }
 .quote-words-value {
   margin-top: 0.35rem;
-  font-size: 1.05rem; /* Increased from 0.92rem */
+  font-size: 0.95rem;
   font-style: italic;
   font-weight: 600;
   color: var(--primary-l);
@@ -1071,12 +1071,12 @@ input::placeholder { color: var(--text3); }
 .quote-signatures {
   display: flex;
   justify-content: space-between;
-  margin-top: 4.5rem;
+  margin-top: 3rem;
   padding: 0 1rem;
 }
 .quote-sig-block {
   text-align: center;
-  font-size: 0.95rem; /* Increased from 0.82rem */
+  font-size: 0.85rem;
   color: var(--text2);
   font-weight: 600;
 }
@@ -1313,53 +1313,28 @@ input::placeholder { color: var(--text3); }
     color: #1a1a1a;
     font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
     width: 100%;
-    padding-top: 0.5cm;
-    font-size: 10pt;
-    line-height: 1.5;
+    padding-top: 0.2cm;
+    font-size: 8pt;
+    line-height: 1.35;
   }
   .print-quote-company-header {
-    text-align: center;
-    margin-bottom: 0.3cm;
-  }
-  .print-quote-company-name {
-    font-size: 18pt;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    color: #000;
-    margin-bottom: 0.1cm;
-    text-transform: uppercase;
-  }
-  .print-quote-company-address {
-    font-size: 8.5pt;
-    color: #444;
-    line-height: 1.45;
-    max-width: 80%;
-    margin: 0 auto 0.1cm;
-  }
-  .print-quote-company-phone {
-    font-size: 9.5pt;
-    font-weight: 600;
-    color: #222;
-    letter-spacing: 0.02em;
+    display: none !important;
   }
   .print-quote-header-divider {
-    border: 0;
-    border-top: 1.5px solid #999;
-    margin-top: 0.2cm;
-    margin-bottom: 0.35cm;
+    display: none !important;
   }
   .print-quote-header {
     display: flex;
     justify-content: center;
     align-items: center;
-    margin-bottom: 0.5cm;
-    border-bottom: 1.5px solid #333;
-    padding-bottom: 0.15cm;
+    margin-bottom: 0.3cm;
+    border-bottom: 1.2px solid #333;
+    padding-bottom: 0.1cm;
   }
   .print-quote-title {
     font-size: 10pt;
     font-weight: 700;
-    letter-spacing: 0.25em;
+    letter-spacing: 0.18em;
     color: #000;
     text-transform: uppercase;
   }
@@ -1367,8 +1342,8 @@ input::placeholder { color: var(--text3); }
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 0.6cm;
-    font-size: 10pt;
+    margin-bottom: 0.35cm;
+    font-size: 8pt;
   }
   .print-quote-to {
     display: flex;
@@ -1383,14 +1358,14 @@ input::placeholder { color: var(--text3); }
   .print-meta-label {
     font-weight: 600;
     color: #333;
-    font-size: 9pt;
+    font-size: 7.5pt;
     text-transform: uppercase;
     letter-spacing: 0.03em;
   }
   .print-meta-val {
     color: #000;
     font-weight: 700;
-    font-size: 10pt;
+    font-size: 8.5pt;
   }
   /* Right-side meta alignment table */
   .print-meta-table {
@@ -1399,18 +1374,18 @@ input::placeholder { color: var(--text3); }
   }
   .print-meta-table td {
     border: none;
-    padding: 2px 0;
+    padding: 1.5px 0;
     vertical-align: top;
-    font-size: 9.5pt;
+    font-size: 8pt;
   }
   .print-meta-table .print-meta-label {
     white-space: nowrap;
     text-align: right;
     padding-right: 4px;
-    font-size: 9pt;
+    font-size: 7.5pt;
   }
   .print-meta-table .print-meta-sep {
-    padding: 2px 5px;
+    padding: 1.5px 4px;
     font-weight: 600;
     color: #333;
   }
@@ -1418,55 +1393,55 @@ input::placeholder { color: var(--text3); }
     text-align: left;
     padding-left: 4px;
     font-weight: 700;
-    font-size: 10pt;
+    font-size: 8.5pt;
     white-space: nowrap;
   }
   .print-quote-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 9.5pt;
-    margin-bottom: 0.6cm;
+    font-size: 8pt;
+    margin-bottom: 0.35cm;
   }
   .print-quote-table th {
     border: 1px solid #444;
     background: #f0f0f0;
     color: #000;
-    padding: 6px 8px;
+    padding: 4px 6px;
     font-weight: 700;
-    font-size: 8.5pt;
+    font-size: 7.5pt;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     text-align: left;
   }
   .print-quote-table td {
     border: 1px solid #666;
-    padding: 6px 8px;
+    padding: 4px 6px;
     color: #1a1a1a;
-    font-size: 9.5pt;
+    font-size: 8pt;
   }
   .print-quote-table tfoot td {
     border: 1px solid #444;
-    padding: 6px 8px;
-    font-size: 10pt;
+    padding: 4px 6px;
+    font-size: 8.5pt;
     font-weight: 700;
   }
   .print-quote-words {
     border: 1px solid #666;
-    padding: 0.3cm 0.4cm;
-    margin-bottom: 0.6cm;
-    font-size: 9.5pt;
+    padding: 0.2cm 0.3cm;
+    margin-bottom: 0.35cm;
+    font-size: 8pt;
   }
   .print-quote-footer {
     display: flex;
     justify-content: space-between;
-    margin-top: 1.8cm;
+    margin-top: 1cm;
   }
   .print-quote-footer .print-sign-block {
-    font-size: 9pt;
+    font-size: 7.5pt;
     text-align: center;
   }
   .print-quote-footer .print-sign-line {
-    width: 160px;
+    width: 130px;
     border-top: 1px solid #333;
     margin-bottom: 4px;
   }
