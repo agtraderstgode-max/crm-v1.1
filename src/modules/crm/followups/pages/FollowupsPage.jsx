@@ -1,7 +1,65 @@
 import { useState, useEffect, useMemo } from 'react'
-import { CalendarCheck, Calendar, Phone, Clock, AlertCircle, MessageSquare, Send, CheckCircle, X, ChevronRight, User } from 'lucide-react'
+import {
+  CalendarCheck, Calendar, Phone, Clock, AlertCircle, MessageSquare,
+  Send, CheckCircle, X, ChevronRight, User, History, CheckCheck,
+  Search, Filter, RotateCcw, CalendarDays, ArrowRight
+} from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
 import { DEFAULT_STAFF_LIST, resolveStaffName } from '../../leads/pages/LeadsPage'
+
+export function getLocalYMD(date = new Date()) {
+  const d = new Date(date)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export function parseLogDate(raw) {
+  if (!raw) return ''
+  const s = String(raw).trim()
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+  const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (slashMatch) {
+    const [, d, m, y] = slashMatch
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+  const dt = new Date(s)
+  if (!isNaN(dt.getTime())) {
+    return getLocalYMD(dt)
+  }
+  return ''
+}
+
+function formatHistoryTimestamp(timestamp = '', logDate = '', todayYMD = '', yesterdayYMD = '') {
+  let timeStr = ''
+  if (timestamp.includes(',')) {
+    timeStr = timestamp.split(',')[1]?.trim() || ''
+  }
+
+  if (logDate === todayYMD) {
+    return timeStr ? `Today at ${timeStr}` : 'Today'
+  }
+  if (logDate === yesterdayYMD) {
+    return timeStr ? `Yesterday at ${timeStr}` : 'Yesterday'
+  }
+  if (logDate) {
+    const [y, m, d] = logDate.split('-').map(Number)
+    const formattedDate = new Date(y, m - 1, d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    return timeStr ? `${formattedDate}, ${timeStr}` : formattedDate
+  }
+  return timestamp || 'Completed'
+}
+
+const OUTCOME_STYLES = {
+  'Keep Tracking': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Keep Tracking 2x': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Keep Tracking 3x': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Keep Tracking 4x': 'bg-purple-50 text-purple-700 border-purple-200',
+  'Customer Bought': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Lost Customer': 'bg-red-50 text-red-700 border-red-200',
+  'No Answer': 'bg-rose-50 text-rose-700 border-rose-200',
+}
 
 export function FollowupsPage() {
   const [leads, setLeads] = useState([])
@@ -9,6 +67,15 @@ export function FollowupsPage() {
   const [loading, setLoading] = useState(true)
   const [selectedLead, setSelectedLead] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // Navigation tab: 'agenda' (Today's Follow-up Agenda) | 'history' (Completed Follow-up History)
+  const [activeMainTab, setActiveMainTab] = useState('agenda')
+
+  // History Filter State
+  const [historyPeriod, setHistoryPeriod] = useState('today') // 'today' | 'yesterday' | 'week' | 'all'
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyStaffFilter, setHistoryStaffFilter] = useState('All Staff')
+  const [historyOutcomeFilter, setHistoryOutcomeFilter] = useState('All Outcomes')
 
   // Drawer Form State
   const [outcome, setOutcome] = useState('') // 'Keep Tracking' | 'Customer Bought' | 'Lost Customer' | 'No Answer'
@@ -19,7 +86,18 @@ export function FollowupsPage() {
   const [boughtAmt, setBoughtAmt] = useState('')
   const [remarks, setRemarks] = useState('')
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = getLocalYMD()
+  const todayYMD = todayStr
+  const yesterdayYMD = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 1)
+    return getLocalYMD(d)
+  }, [])
+  const sevenDaysAgoYMD = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 7)
+    return getLocalYMD(d)
+  }, [])
 
   useEffect(() => {
     fetchLeads()
@@ -77,6 +155,89 @@ export function FollowupsPage() {
 
   const sortedOverdue = [...overdueLeads].sort((a, b) => getPriorityScore(b) - getPriorityScore(a))
   const sortedToday = [...todayLeads].sort((a, b) => getPriorityScore(b) - getPriorityScore(a))
+
+  // Flatten all completed follow-ups from lead history
+  const completedFollowups = useMemo(() => {
+    const list = []
+    leads.forEach(lead => {
+      if (Array.isArray(lead.history)) {
+        lead.history.forEach((h, idx) => {
+          const logDate = h.date || parseLogDate(h.timestamp) || ''
+          list.push({
+            id: `${lead.id}-hist-${idx}`,
+            leadId: lead.id,
+            leadName: lead.name,
+            leadPhone: lead.phone,
+            leadLocation: lead.location,
+            leadCustType: lead.custType,
+            leadPriority: lead.priority,
+            leadDate: lead.date,
+            logDate,
+            timestamp: h.timestamp || '',
+            formattedTime: formatHistoryTimestamp(h.timestamp || '', logDate, todayYMD, yesterdayYMD),
+            outcome: h.outcome || lead.status || 'Keep Tracking',
+            status: h.status || lead.status,
+            remarks: h.remarks || '',
+            attendedBy: resolveStaffName(h.attendedBy || lead.attendedBy, staffMembers),
+            lostReason: h.lostReason,
+            amount: h.amount,
+            nextDate: h.nextDate,
+            rawLog: h,
+            lead
+          })
+        })
+      }
+    })
+
+    // Sort descending by logDate and timestamp (newest completed first)
+    list.sort((a, b) => {
+      if (b.logDate && a.logDate && b.logDate !== a.logDate) {
+        return b.logDate.localeCompare(a.logDate)
+      }
+      return (b.timestamp || '').localeCompare(a.timestamp || '')
+    })
+
+    return list
+  }, [leads, staffMembers, todayYMD, yesterdayYMD])
+
+  const historyCounts = useMemo(() => {
+    return {
+      today: completedFollowups.filter(item => item.logDate === todayYMD).length,
+      yesterday: completedFollowups.filter(item => item.logDate === yesterdayYMD).length,
+      week: completedFollowups.filter(item => item.logDate && item.logDate >= sevenDaysAgoYMD).length,
+      all: completedFollowups.length
+    }
+  }, [completedFollowups, todayYMD, yesterdayYMD, sevenDaysAgoYMD])
+
+  const filteredHistory = useMemo(() => {
+    return completedFollowups.filter(item => {
+      // Period filter
+      if (historyPeriod === 'today' && item.logDate !== todayYMD) return false
+      if (historyPeriod === 'yesterday' && item.logDate !== yesterdayYMD) return false
+      if (historyPeriod === 'week' && (!item.logDate || item.logDate < sevenDaysAgoYMD)) return false
+
+      // Staff filter
+      if (historyStaffFilter !== 'All Staff' && item.attendedBy !== historyStaffFilter) return false
+
+      // Outcome filter
+      if (historyOutcomeFilter !== 'All Outcomes' && !item.outcome?.toLowerCase().includes(historyOutcomeFilter.toLowerCase())) return false
+
+      // Search filter
+      if (historySearch.trim()) {
+        const q = historySearch.toLowerCase()
+        const matchesName = item.leadName?.toLowerCase().includes(q)
+        const matchesPhone = item.leadPhone?.includes(q)
+        const matchesLoc = item.leadLocation?.toLowerCase().includes(q)
+        const matchesRemarks = item.remarks?.toLowerCase().includes(q)
+        const matchesStaff = item.attendedBy?.toLowerCase().includes(q)
+        if (!matchesName && !matchesPhone && !matchesLoc && !matchesRemarks && !matchesStaff) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [completedFollowups, historyPeriod, historyStaffFilter, historyOutcomeFilter, historySearch, todayYMD, yesterdayYMD, sevenDaysAgoYMD])
 
   const handleDaysChange = (days) => {
     setWithinDays(days)
@@ -186,6 +347,7 @@ export function FollowupsPage() {
     // Build timeline log object
     const historyLog = {
       timestamp: new Date().toLocaleString('en-IN'),
+      date: getLocalYMD(),
       outcome,
       status: finalStatus,
       remarks: remarks,
@@ -233,16 +395,68 @@ export function FollowupsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-slate-800">Today's Follow-up Agenda</h1>
-        <p className="text-sm text-slate-500">Auto-filtered checklist. Log outcomes, snooze calls, or close sales quickly.</p>
+      {/* Header and Main Tab Switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">
+            {activeMainTab === 'agenda' ? "Today's Follow-up Agenda" : "Follow-up Completed History"}
+          </h1>
+          <p className="text-sm text-slate-500">
+            {activeMainTab === 'agenda'
+              ? 'Auto-filtered checklist. Log outcomes, snooze calls, or close sales quickly.'
+              : 'Audit trail of completed calls, outcome notes, and staff follow-ups.'}
+          </p>
+        </div>
+
+        {/* Main Tab Toggle Buttons */}
+        <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl w-fit flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('agenda')}
+            className={cn(
+              'flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer',
+              activeMainTab === 'agenda'
+                ? 'bg-white text-blue-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            )}
+          >
+            <CalendarCheck className="w-3.5 h-3.5" />
+            <span>Today's Agenda</span>
+            <span className={cn(
+              'rounded-full px-2 py-0.5 text-[10px] font-extrabold',
+              activeMainTab === 'agenda' ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
+            )}>
+              {sortedOverdue.length + sortedToday.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('history')}
+            className={cn(
+              'flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer',
+              activeMainTab === 'history'
+                ? 'bg-white text-violet-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            )}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Follow-up History</span>
+            <span className={cn(
+              'rounded-full px-2 py-0.5 text-[10px] font-extrabold',
+              activeMainTab === 'history' ? 'bg-violet-100 text-violet-700' : 'bg-slate-200 text-slate-600'
+            )}>
+              {historyCounts.all}
+            </span>
+          </button>
+        </div>
       </div>
 
       {loading ? (
-        <div className="py-16 text-center text-slate-400 text-sm">Loading today's agenda...</div>
-      ) : (
+        <div className="py-16 text-center text-slate-400 text-sm">Loading follow-ups...</div>
+      ) : activeMainTab === 'agenda' ? (
+        /* ─── Agenda View (Overdue & Today) ─── */
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
           {/* Overdue Section */}
           <div className="space-y-4">
             <h2 className="text-xs font-bold text-red-500 uppercase tracking-widest flex items-center gap-1.5 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
@@ -274,7 +488,154 @@ export function FollowupsPage() {
               </div>
             )}
           </div>
+        </div>
+      ) : (
+        /* ─── Follow-up History View ─── */
+        <div className="space-y-5">
+          {/* Sub-tabs: Today's Done / Yesterday's Done / Last 7 Days / All History */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl w-fit flex-wrap">
+              {[
+                { id: 'today', label: "Today's Done", count: historyCounts.today, icon: CheckCheck, activeClass: 'bg-white text-emerald-700 shadow-xs' },
+                { id: 'yesterday', label: "Yesterday's Done", count: historyCounts.yesterday, icon: RotateCcw, activeClass: 'bg-white text-blue-700 shadow-xs' },
+                { id: 'week', label: 'Last 7 Days', count: historyCounts.week, icon: CalendarDays, activeClass: 'bg-white text-violet-700 shadow-xs' },
+                { id: 'all', label: 'All History', count: historyCounts.all, icon: History, activeClass: 'bg-white text-slate-800 shadow-xs' },
+              ].map(tab => {
+                const Icon = tab.icon
+                const isActive = historyPeriod === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setHistoryPeriod(tab.id)}
+                    className={cn(
+                      'flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer',
+                      isActive ? tab.activeClass : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{tab.label}</span>
+                    <span className={cn(
+                      'rounded-full px-2 py-0.5 text-[10px] font-extrabold',
+                      isActive ? 'bg-slate-100 text-slate-800' : 'bg-slate-200 text-slate-600'
+                    )}>
+                      {tab.count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
 
+            <span className="text-xs text-slate-500 font-medium">
+              Showing {filteredHistory.length} completed log{filteredHistory.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          {/* Search & Filter Toolbar */}
+          <div className="flex flex-wrap gap-2.5">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 flex-1 min-w-56 shadow-xs">
+              <Search className="h-4 w-4 text-slate-400 flex-shrink-0" />
+              <input
+                type="text"
+                placeholder="Search customer, phone, notes, location..."
+                className="flex-1 text-xs outline-none text-slate-700 placeholder:text-slate-400"
+                value={historySearch}
+                onChange={e => setHistorySearch(e.target.value)}
+              />
+              {historySearch && (
+                <button
+                  type="button"
+                  onClick={() => setHistorySearch('')}
+                  className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <select
+              value={historyStaffFilter}
+              onChange={e => setHistoryStaffFilter(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs outline-none cursor-pointer"
+            >
+              <option value="All Staff">All Staff</option>
+              {staffList.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+
+            <select
+              value={historyOutcomeFilter}
+              onChange={e => setHistoryOutcomeFilter(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs outline-none cursor-pointer"
+            >
+              <option value="All Outcomes">All Outcomes</option>
+              <option value="Keep Tracking">Keep Tracking</option>
+              <option value="Customer Bought">Customer Bought</option>
+              <option value="Lost Customer">Lost Customer</option>
+              <option value="No Answer">No Answer</option>
+            </select>
+          </div>
+
+          {/* History Cards List */}
+          {filteredHistory.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center space-y-3.5">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400 mx-auto">
+                <CheckCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">
+                  {historyPeriod === 'today'
+                    ? "No follow-ups logged today yet"
+                    : historyPeriod === 'yesterday'
+                    ? "No follow-ups logged yesterday"
+                    : "No completed follow-ups match filters"}
+                </h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
+                  {historyPeriod === 'today'
+                    ? "When staff complete calls from Today's Agenda, they will automatically appear here."
+                    : "Try switching periods or clearing filters."}
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+                {historyCounts.yesterday > 0 && historyPeriod === 'today' && (
+                  <button
+                    type="button"
+                    onClick={() => setHistoryPeriod('yesterday')}
+                    className="flex items-center gap-1.5 rounded-xl bg-blue-50 border border-blue-200 px-3.5 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> View Yesterday's Done ({historyCounts.yesterday})
+                  </button>
+                )}
+                {historyCounts.all > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setHistoryPeriod('all'); setHistorySearch(''); setHistoryStaffFilter('All Staff'); setHistoryOutcomeFilter('All Outcomes'); }}
+                    className="flex items-center gap-1.5 rounded-xl bg-slate-100 border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
+                  >
+                    <History className="w-3.5 h-3.5" /> View All History ({historyCounts.all})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setActiveMainTab('agenda')}
+                  className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 transition-colors shadow-xs cursor-pointer"
+                >
+                  <CalendarCheck className="w-3.5 h-3.5" /> Go to Today's Agenda ({sortedToday.length})
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3.5">
+              {filteredHistory.map(item => (
+                <FollowupHistoryCard
+                  key={item.id}
+                  item={item}
+                  onOpenDrawer={handleOpenDrawer}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -665,9 +1026,129 @@ function LeadCard({ lead, onAction, daysSince, staffRecords = [] }) {
       <div className="flex items-center gap-2 flex-shrink-0">
         <button
           onClick={onAction}
-          className="flex-1 md:flex-none flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-colors whitespace-nowrap"
+          className="flex-1 md:flex-none flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-colors whitespace-nowrap cursor-pointer"
         >
           <Phone className="h-3.5 w-3.5" /> Log Call Outcome
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Reusable Follow-up History Card Component ────────────────
+function FollowupHistoryCard({ item, onOpenDrawer }) {
+  const priorityStyle = {
+    High:   'bg-red-50 border-red-100 text-red-700',
+    Medium: 'bg-amber-50 border-amber-100 text-amber-700',
+    Low:    'bg-blue-50 border-blue-100 text-blue-700',
+  }
+
+  const outcomeStyle = OUTCOME_STYLES[item.outcome] || 'bg-slate-100 text-slate-700 border-slate-200'
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs hover:shadow-md hover:border-blue-300 transition-all space-y-3.5">
+      {/* Top Header: Customer Info & Status / Time */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 pb-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 text-violet-700 font-bold text-sm flex-shrink-0">
+            {item.leadName.charAt(0)}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base font-bold text-slate-800 truncate">{item.leadName}</h3>
+              {item.leadPriority && (
+                <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-bold border', priorityStyle[item.leadPriority] || priorityStyle.Medium)}>
+                  {item.leadPriority}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <span>📞 {item.leadPhone}</span>
+              {item.leadLocation && <span>• 📍 {item.leadLocation}</span>}
+              {item.leadCustType && <span>• <span className="font-semibold text-slate-500">{item.leadCustType}</span></span>}
+            </p>
+          </div>
+        </div>
+
+        {/* Right side tags: Outcome + Timestamp */}
+        <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+          <span className={cn('rounded-full border px-2.5 py-1 text-xs font-bold whitespace-nowrap', outcomeStyle)}>
+            {item.outcome}
+          </span>
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-200/80 px-2.5 py-1 rounded-md whitespace-nowrap">
+            <Clock className="w-3 h-3 text-slate-400" />
+            {item.formattedTime}
+          </span>
+        </div>
+      </div>
+
+      {/* Middle: Notes & Follow-up Details */}
+      <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-3.5 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+          <span className="font-bold text-slate-700 flex items-center gap-1.5">
+            <MessageSquare className="w-3.5 h-3.5 text-blue-600" />
+            Discussion Notes &amp; Outcome
+          </span>
+          {item.attendedBy && (
+            <span className="inline-flex items-center gap-1 font-semibold text-violet-700 bg-violet-100/80 border border-violet-200 px-2 py-0.5 rounded-full text-xs">
+              <span>👤 Attended By:</span>
+              <span className="font-bold">{item.attendedBy}</span>
+            </span>
+          )}
+        </div>
+
+        <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">
+          {item.remarks || <span className="italic text-slate-400">No notes recorded for this call.</span>}
+        </p>
+
+        {/* Next follow-up or outcome details */}
+        {(item.nextDate || item.amount || item.lostReason) && (
+          <div className="flex items-center gap-3 pt-1 border-t border-slate-200/60 flex-wrap text-xs">
+            {item.nextDate && (
+              <span className="inline-flex items-center gap-1.5 font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-lg">
+                <CalendarDays className="w-3.5 h-3.5 text-blue-600" />
+                Next Scheduled Call: {fmtDate(item.nextDate)}
+              </span>
+            )}
+            {item.amount && (
+              <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                💰 Sales Closed: ₹{parseFloat(item.amount).toLocaleString('en-IN')}
+              </span>
+            )}
+            {item.lostReason && (
+              <span className="inline-flex items-center gap-1 font-semibold text-red-700 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg">
+                ❌ Lost Reason: {item.lostReason}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Card Actions */}
+      <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+        <div className="flex items-center gap-2">
+          <a
+            href={`tel:${item.leadPhone}`}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors shadow-xs"
+          >
+            <Phone className="w-3 h-3 text-blue-600" /> Call
+          </a>
+          <a
+            href={`https://wa.me/91${item.leadPhone}?text=Hi%20${encodeURIComponent(item.leadName)},%20this%20is%20AG%20Traders%20Tiruchengode.%20Checking%20in%20regarding%20your%20flooring%20tiles%20enquiry.`}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors shadow-xs"
+          >
+            <MessageSquare className="w-3 h-3 text-emerald-600" /> WhatsApp
+          </a>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onOpenDrawer(item.lead)}
+          className="flex items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100/80 px-3.5 py-1.5 text-xs font-bold text-blue-700 transition-colors cursor-pointer"
+        >
+          <RotateCcw className="w-3 h-3" /> Log Next Outcome
         </button>
       </div>
     </div>
