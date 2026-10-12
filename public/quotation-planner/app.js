@@ -301,10 +301,20 @@ function findTileInDB(name) {
   if (!q) return undefined;
   let exact = TILE_DB.find(t => t.name.trim().toLowerCase() === q);
   if (exact) return exact;
-  return TILE_DB.find(t => {
+  let prefixMatch = TILE_DB.find(t => {
     const tn = t.name.trim().toLowerCase();
     return tn.startsWith(q + ' ') || q.startsWith(tn + ' ');
   });
+  if (prefixMatch) return prefixMatch;
+  // Fallback: match by base model name before dimension (e.g. "71183 F 15X10 WP" -> "71183 F")
+  const baseName = q.replace(/\s+\d+x\d+.*$/i, '').trim();
+  if (baseName && baseName !== q) {
+    return TILE_DB.find(t => {
+      const tn = t.name.trim().toLowerCase();
+      return tn === baseName || (tn.startsWith(baseName + ' ') && /^\d+x\d+/i.test(tn.slice(baseName.length + 1).trim()));
+    });
+  }
+  return undefined;
 }
 
 function mapLoadedQuotationItems(rawItems) {
@@ -440,220 +450,8 @@ function restoreActiveDraftFromStorage() {
   }
 }
 
-// ─── Tile Database (from CSV) ───────────────────────────────────
-let TILE_DB = [
-  // 48×24 PGVT
-  { name: "AGATHA BEIGE 48X24 PGVT",       coverage: 15.5, weight: 26 },
-  { name: "NEOTI WHITE 48X24 PGVT",         coverage: 15.5, weight: 26 },
-  { name: "BOTTOCHINO GOLD 48X24 PGVT",     coverage: 15.5, weight: 26 },
-  { name: "CONWAY BIANCO 48X24 PGVT",       coverage: 15.5, weight: 26 },
-  { name: "LUCIAN WHITE 48X24 PGVT",        coverage: 15.5, weight: 26 },
-  { name: "PARKER WHITE 48X24 PGVT",        coverage: 15.5, weight: 26 },
-  { name: "TANGO NARANGA 48X24 PGVT",       coverage: 15.5, weight: 26 },
-  { name: "BALASTY ONYX 48X24 PGVT",        coverage: 15.5, weight: 26 },
-  { name: "ANTARA GOLD 48X24 PGVT",         coverage: 15.5, weight: 26 },
-  { name: "MARSI GOLD 48X24 PGVT",          coverage: 15.5, weight: 26 },
-  { name: "MORIS GOLD 48X24 PGVT",          coverage: 15.5, weight: 26 },
-  { name: "FIROZA AQUA 48X24 PGVT",         coverage: 15.5, weight: 26 },
-  { name: "ALKIN ZELENI 48X24 PGVT",        coverage: 15.5, weight: 26 },
-  { name: "AZERI GREY 48X24 PGVT",          coverage: 15.5, weight: 26 },
-  { name: "EPSO WHITE 48X24 PGVT",          coverage: 15.5, weight: 26 },
-  { name: "HAILE BLUE 48X24 PGVT",          coverage: 15.5, weight: 26 },
-  { name: "REPEN SATUARIO 48X24 PGVT",      coverage: 15.5, weight: 26 },
-  { name: "VEGA BLUE 48X24 PGVT",           coverage: 15.5, weight: 26 },
-  // 48×24 HG
-  { name: "HG IMPALA BLACK 48X24",          coverage: 15.5, weight: 26 },
-  { name: "HG KORDORO BROWN 48X24",         coverage: 15.5, weight: 26 },
-  { name: "HG PULIDO BLUE 48X24",           coverage: 15.5, weight: 26 },
-  { name: "HG ONYX TEAL 48X24",             coverage: 15.5, weight: 26 },
-  { name: "HG PLATINUM BLACK 48X24",        coverage: 15.5, weight: 26 },
-  { name: "HG STROMY BLUE 48X24",           coverage: 15.5, weight: 26 },
-  // 24×24 GVT
-  { name: "ZET BLUE 24X24 GVT",             coverage: 15.5, weight: 26 },
-  { name: "SALOMA BEIGE 24X24 GVT",         coverage: 15.5, weight: 26 },
-  // 20×20
-  { name: "GARDENA GREY 20X20",             coverage: 8.07, weight: 13 },
-  { name: "GARDENA NERO 20X20",             coverage: 8.07, weight: 13 },
-  // KAG
-  { name: "KAG GOLD 20 KG",                coverage: 50,   weight: 20 },
-  { name: "KAG DIAMOND 20 KG",             coverage: 50,   weight: 20 },
-  // 18×12 WP ELE
-  { name: "BAYWALK GREY 18X12 WP ELE",      coverage: 8.72, weight: 10 },
-  { name: "BEVERLY GRIS 18X12 WP ELE",      coverage: 8.72, weight: 10 },
-  { name: "ROMFO GRIS 18X12 WP ELE",        coverage: 8.72, weight: 10 },
-  { name: "10046 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "10047 HL 1 18X12 WP",            coverage: 8.72, weight: 10 },
-  { name: "10048 HL 2 18X12 WP",            coverage: 8.72, weight: 10 },
-  { name: "10049 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "10051 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "10052 HL 1 18X12 WP",            coverage: 8.72, weight: 10 },
-  { name: "10053 HL 2 18X12 WP",            coverage: 8.72, weight: 10 },
-  { name: "10054 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "10076 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "10077 HL 1 18X12 WP",            coverage: 8.72, weight: 10 },
-  { name: "10078 HL 2 18X12 WP",            coverage: 8.72, weight: 10 },
-  { name: "10079 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "10085 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "10087 HL 2 18X12 WP",            coverage: 8.72, weight: 10 },
-  { name: "10088 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "10914 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "10915 HL 1 18X12 WP",            coverage: 8.72, weight: 10 },
-  { name: "10916 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "10927 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "10928 HL1 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "10930 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "BREE KITCHEN D 18X12 WP",        coverage: 8.72, weight: 10 },
-  { name: "BREE KITCHEN HL-R 18X12 WP",     coverage: 8.72, weight: 10 },
-  { name: "BREE KITCHEN L 18X12 WP",        coverage: 8.72, weight: 10 },
-  { name: "58005 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58006 HL1 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "58007 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58017 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58018 HL1 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "58020 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58026 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58027 HL1 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "58028 HL2 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "58029 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58039 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58040 HL1 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "58041 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58042 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58057 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58058 HL1 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "58059 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58065 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58067 HL2 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "58068 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58074 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58075 HL1 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "58076 HL2 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "58077 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58084 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58085 HL1 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "58086 KITCHEN HL R 18X12 WP",    coverage: 8.72, weight: 10 },
-  { name: "58087 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58089 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58090 POOJA HL1 R 18X12 WP",     coverage: 8.72, weight: 10 },
-  { name: "58091 POOJA HL2 18X12 WP",       coverage: 8.72, weight: 10 },
-  { name: "58092 KITCHEN HL R 18X12 WP",    coverage: 8.72, weight: 10 },
-  { name: "58093 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58094 POOJA HL R 18X12 WP",      coverage: 8.72, weight: 10 },
-  { name: "58095 KITCHEN HL R 18X12 WP",    coverage: 8.72, weight: 10 },
-  { name: "58104 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "58105 HL1 18X12 WP",             coverage: 8.72, weight: 10 },
-  { name: "58106 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "30046 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "30047 HL 18X12 WP",              coverage: 8.72, weight: 10 },
-  { name: "30048 HL 18X12 WP",              coverage: 8.72, weight: 10 },
-  { name: "30049 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "51013 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "51014 HL 18X12 WP",              coverage: 8.72, weight: 10 },
-  { name: "51015 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "51089 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "51096 HL-R 18X12 WP",            coverage: 8.72, weight: 10 },
-  { name: "51097 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "51279 L 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "51281 HL 2 18X12 WP",            coverage: 8.72, weight: 10 },
-  { name: "51283 D 18X12 WP",               coverage: 8.72, weight: 10 },
-  { name: "COSERA KITCHEN D 18X12 WP",      coverage: 8.72, weight: 10 },
-  { name: "COSERA KITCHEN HL R 18X12 WP",   coverage: 8.72, weight: 10 },
-  { name: "COSERA KITCHEN L 18X12 WP",      coverage: 8.72, weight: 10 },
-  { name: "DIVINE POOJA HL 1 R 18X12 WP",   coverage: 8.72, weight: 10 },
-  { name: "DIVINE POOJA HL 2 R 18X12 WP",   coverage: 8.72, weight: 10 },
-  { name: "DIVINE POOJA L 18X12 WP",        coverage: 8.72, weight: 10 },
-  { name: "GLIDER KITCHEN D 18X12 WP",      coverage: 8.72, weight: 10 },
-  { name: "GLIDER KITCHEN HL R 18X12 WP",   coverage: 8.72, weight: 10 },
-  { name: "GLIDER KITCHEN L 18X12 WP",      coverage: 8.72, weight: 10 },
-  { name: "KERMIT KITCHEN D 18X12 WP",      coverage: 8.72, weight: 10 },
-  { name: "KERMIT KITCHEN HL R 18X12 WP",   coverage: 8.72, weight: 10 },
-  { name: "KERMIT KITCHEN L 18X12 WP",      coverage: 8.72, weight: 10 },
-  { name: "MADRID KITCHEN D 18X12 WP",      coverage: 8.72, weight: 10 },
-  { name: "MADRID KITCHEN HL R 18X12 WP",   coverage: 8.72, weight: 10 },
-  { name: "MADRID KITCHEN L 18X12 WP",      coverage: 8.72, weight: 10 },
-  { name: "PARLE KITCHEN D 18X12 WP",       coverage: 8.72, weight: 10 },
-  { name: "PARLE KITCHEN HL R 18X12 WP",    coverage: 8.72, weight: 10 },
-  { name: "PARLE KITCHEN L 18X12 WP",       coverage: 8.72, weight: 10 },
-  { name: "SEAN KITCHEN D 18X12 WP",        coverage: 8.72, weight: 10 },
-  { name: "SEAN KITCHEN HL R 18X12 WP",     coverage: 8.72, weight: 10 },
-  { name: "SEAN KITCHEN L 18X12 WP",        coverage: 8.72, weight: 10 },
-  // 18×12 SM ELE
-  { name: "ERCOSA TOPAZ 18X12 SM ELE",      coverage: 8.72, weight: 10 },
-  { name: "PLAZMA-EL 18X12 SM ELE",         coverage: 8.72, weight: 10 },
-  { name: "RILES 18X12 SM ELE",             coverage: 8.72, weight: 10 },
-  { name: "STONICA GRIS-EL 18X12 SM ELE",   coverage: 8.72, weight: 10 },
-  { name: "BLOOM D 18X12 SM",               coverage: 8.72, weight: 10 },
-  { name: "BLOOM HL1 18X12 SM",             coverage: 8.72, weight: 10 },
-  { name: "BLOOM L 18X12 SM",               coverage: 8.72, weight: 10 },
-  { name: "SPARTAN HL-R 18X12 SM",          coverage: 8.72, weight: 10 },
-  { name: "SPARTAN L 18X12 SM",             coverage: 8.72, weight: 10 },
-  // 18×12 HD
-  { name: "KHD 104 18X12 HD",               coverage: 7.27, weight: 10 },
-  { name: "KHD 113 18X12 HD",               coverage: 7.27, weight: 10 },
-  { name: "KHD 123 18X12 HD",               coverage: 7.27, weight: 10 },
-  { name: "KHD 124 18X12 HD",               coverage: 7.27, weight: 10 },
-  { name: "KHD 145 18X12 HD",               coverage: 7.27, weight: 10 },
-  { name: "KHD 147 18X12 HD",               coverage: 7.27, weight: 10 },
-  { name: "KHD 148 18X12 HD",               coverage: 7.27, weight: 10 },
-  { name: "KHD 153 18X12 HD",               coverage: 7.27, weight: 10 },
-  { name: "KHD 176 18X12 HD",               coverage: 7.27, weight: 10 },
-  // 16×16
-  { name: "RONO GREY 16X16",                coverage: 8.61, weight: 18 },
-  { name: "ADAK WOOD 16X16",                coverage: 8.61, weight: 18 },
-  { name: "RONO NATURAL 16X16",             coverage: 8.61, weight: 18 },
-  { name: "ELAN BLUE 16X16",                coverage: 8.61, weight: 18 },
-  { name: "ERKA WOOD 16X16",                coverage: 8.61, weight: 18 },
-  { name: "GRETEX BEIGE 16X16",             coverage: 8.61, weight: 18 },
-  { name: "GRETEX GREY 16X16",              coverage: 8.61, weight: 18 },
-  { name: "RONO WHITE 16X16",               coverage: 8.61, weight: 18 },
-  { name: "TONG STONE 16X16",               coverage: 8.61, weight: 18 },
-  // 15×10 WP
-  { name: "71179 L 15X10 WP",               coverage: 8.07, weight: 8 },
-  { name: "71182 D 15X10 WP",               coverage: 8.07, weight: 8 },
-  { name: "71181 HL 2 15X10 WP",            coverage: 8.07, weight: 8 },
-  { name: "71183 F 15X10 WP",               coverage: 8.07, weight: 8 },
-  // 12×12 WP MAT
-  { name: "10050 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "10055 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "10080 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "10089 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "10917 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "10931 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "58008 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "58021 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "58030 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "58043 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "58044 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "58060 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "58069 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "58078 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "58088 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "58107 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "30050 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "51016 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "51098 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  { name: "51284 F 12X12 WP MAT",           coverage: 8.72, weight: 10 },
-  // 12×12 Roofing
-  { name: "SNOW WHITE ROOFING 12X12 VIT ROOF", coverage: 7.75, weight: 12 },
-  { name: "BLOOM F 12X12 SM MAT",           coverage: 8.72, weight: 10 },
-  { name: "ROOF ALTIS MULTI 12X12 ROOF",    coverage: 8.72, weight: 11 },
-  { name: "ROOF LAME BLUE 12X12 ROOF",      coverage: 8.72, weight: 11 },
-  { name: "SPARKLE LEO MULTI 12X12 ROOF",   coverage: 8.72, weight: 11 },
-  { name: "ROOFING WHITE 12X12 ROOF",       coverage: 8.72, weight: 11 },
-  // 12×12 PARK
-  { name: "BRADFORD 12X12 PARK",            coverage: 7.75, weight: 12 },
-  { name: "ESNEX 12X12 PARK",               coverage: 7.75, weight: 12 },
-  { name: "FUYA BLUE 12X12 PARK",           coverage: 7.75, weight: 12 },
-  { name: "HANIS GREY 12X12 PARK",          coverage: 7.75, weight: 12 },
-  { name: "HOPA GREY 12X12 PARK",           coverage: 7.75, weight: 12 },
-  { name: "IZEC GREEN 12X12 PARK",          coverage: 7.75, weight: 12 },
-  { name: "LIVON NERO 12X12 PARK",          coverage: 7.75, weight: 12 },
-  { name: "SONICA WHITE 12X12 PARK",        coverage: 7.75, weight: 12 },
-  { name: "STELLA GRIS 12X12 PARK",         coverage: 7.75, weight: 12 },
-  { name: "STELLA WOOD 12X12 PARK",         coverage: 7.75, weight: 12 },
-  { name: "ZUQA GREY 12X12 PARK",           coverage: 7.75, weight: 12 },
-  { name: "TOBA MULTI 12X12 PARK",          coverage: 7.75, weight: 12 },
-];
+// ─── Tile Database (Loaded directly from CRM Product List) ───────────────────
+let TILE_DB = [];
 
 // ─── State ─────────────────────────────────────────────────────
 let rooms = [];
@@ -761,7 +559,7 @@ function parseCSV(text) {
 }
 
 async function loadCSVOnStartup() {
-  const CACHE_VERSION = 'v4_crm_price_sync'; // bump this to force cache refresh
+  const CACHE_VERSION = 'v5_crm_products_only';
   const cached = localStorage.getItem('cached_tile_db');
   const cachedVersion = localStorage.getItem('cached_tile_db_version');
   if (cached && cachedVersion === CACHE_VERSION) {
@@ -775,101 +573,33 @@ async function loadCSVOnStartup() {
       console.error('Failed to parse cached tile db:', e);
     }
   } else if (cached) {
-    // Old cache (wrong rate formula or missing version) — clear it
     localStorage.removeItem('cached_tile_db');
     localStorage.removeItem('cached_tile_db_version');
-    console.log('Cache cleared: outdated version, will re-fetch from CSV');
+    console.log('Cache cleared: outdated version, will load directly from CRM Product List');
   }
 
-  const csvFiles = [
-    './stock and price - Box planning & quotation data to feed.csv',
-    './stock and price - Box planning (1).csv'
-  ];
-
-  for (const file of csvFiles) {
-    try {
-      const res = await fetch(file);
-      if (res.ok) {
-        const text = await res.text();
-        const parsed = parseCSV(text);
-        if (parsed.length > 0) {
-          TILE_DB = parsed;
-          localStorage.setItem('cached_tile_db', JSON.stringify(TILE_DB));
-          localStorage.setItem('cached_tile_db_version', CACHE_VERSION);
-          console.log(`Loaded and cached ${TILE_DB.length} tiles from dynamic CSV fetch of ${file}`);
-          break;
-        }
-      }
-    } catch (e) {
-      console.warn(`Dynamic CSV fetch for ${file} failed (expected if opening file:// directly).`, e);
-    }
-  }
-
-  // After CSV loading, enrich TILE_DB with CRM products data (sqftPrice, weight, billingArea)
+  // Load directly from CRM Product List (/api/products)
   await loadProductsIntoTileDB();
 }
 
 // ─── CRM Products → TILE_DB Pipeline ─────────────────────────────────────────
-// Fetches products from the CRM inventory API and enriches/merges into TILE_DB
-// so the quotation planner gets live sqft pricing, weight, and coverage data
-// without changing any existing quotation calculation logic.
+// Fetches products from the CRM inventory API so the quotation planner uses
+// the exact CRM Product List (live sqft pricing, weight, coverage, and billingArea).
 async function loadProductsIntoTileDB() {
   try {
     const res = await fetch('/api/products');
     if (!res.ok) {
-      console.warn('⚠️ Could not fetch /api/products for TILE_DB enrichment');
+      console.warn('⚠️ Could not fetch /api/products for TILE_DB');
       return;
     }
     const products = await res.json();
     if (!Array.isArray(products) || products.length === 0) return;
-
-    // Build a lookup map of existing TILE_DB entries by normalized name
-    const existingMap = new Map();
-    TILE_DB.forEach((tile, idx) => {
-      existingMap.set(tile.name.toUpperCase().trim(), idx);
-    });
 
     // Helper: extract just the dimension part from size (e.g. "48X24 HG" → "48X24")
     const getDimension = (size) => {
       const m = size.match(/(\d+X\d+)/i);
       return m ? m[1].toUpperCase() : '';
     };
-
-    // Helper: find matching TILE_DB index using multiple strategies
-    const findMatch = (displayName, nameOnly, dimension) => {
-      // Strategy 1: Exact full match ("AGATHA BEIGE 48X24 PGVT" === "AGATHA BEIGE 48X24 PGVT")
-      if (existingMap.has(displayName)) return existingMap.get(displayName);
-
-      // Strategy 2: Name + dimension only ("HG IMPALA BLACK 48X24 HG" → try "HG IMPALA BLACK 48X24")
-      if (dimension) {
-        const dimOnly = `${nameOnly} ${dimension}`;
-        if (existingMap.has(dimOnly)) return existingMap.get(dimOnly);
-      }
-
-      // Strategy 3: Check if any TILE_DB entry starts with product name + dim
-      // e.g. TILE_DB has "HG IMPALA BLACK 48X24", product is "HG IMPALA BLACK 48X24 HG"
-      for (const [tdbName, idx] of existingMap) {
-        if (displayName.startsWith(tdbName + ' ') || tdbName.startsWith(displayName + ' ')) {
-          return idx;
-        }
-      }
-
-      // Strategy 4: Match by nameOnly prefix if TILE_DB entry starts with nameOnly followed by a dimension
-      // e.g. TILE_DB has "BLOOM F 12X12 SM MAT" or "71183 F 15X10 WP", product nameOnly is "BLOOM F" / "71183 F"
-      for (const [tdbName, idx] of existingMap) {
-        if (tdbName.startsWith(nameOnly + ' ')) {
-          const rest = tdbName.slice(nameOnly.length + 1).trim();
-          if (/^\d+X\d+/i.test(rest)) {
-            return idx;
-          }
-        }
-      }
-
-      return undefined;
-    };
-
-    let enriched = 0;
-    let added = 0;
 
     // Helper: default coverage by dimension string
     const getFallbackCoverage = (dim) => {
@@ -890,62 +620,48 @@ async function loadProductsIntoTileDB() {
       return 0;
     };
 
+    const nextTileDB = [];
+    const seenNames = new Set();
+
     products.forEach(p => {
       if (!p.name || !p.size || p.size === 'N/A') return;
 
       const nameOnly = p.name.trim().toUpperCase();
       const sizeStr = p.size.trim().toUpperCase();
       const displayName = `${nameOnly} ${sizeStr}`;
+      if (seenNames.has(displayName)) return;
+      seenNames.add(displayName);
+
       const dimension = getDimension(sizeStr);
-      
       const sqftPrice = p.sqft_price || parseFloat(String(p.price || '').replace(/[^\d.]/g, '')) || 0;
       const coverage = p.sqft_per_box || getFallbackCoverage(dimension);
       const billingArea = p.sqft_per_box_quotation || p.billingArea || getFallbackBillingArea(dimension);
       const weight = p.weight_per_box || 0;
+      const mult = (billingArea > 0) ? billingArea : coverage;
+      const boxPrice = (sqftPrice > 0 && mult > 0) ? Math.round(sqftPrice * mult * 100) / 100 : 0;
 
-      const matchIdx = findMatch(displayName, nameOnly, dimension);
-
-      if (matchIdx !== undefined) {
-        // Enrich existing TILE_DB entry with pricing from CRM products
-        const target = TILE_DB[matchIdx];
-        if (sqftPrice > 0) {
-          target.sqftPrice = sqftPrice;
-          target.sqftRate = sqftPrice;
-        }
-        if (coverage > 0) target.coverage = coverage;
-        if (billingArea > 0) target.billingArea = billingArea;
-        if (weight > 0) target.weight = weight;
-        const mult = (target.billingArea > 0) ? target.billingArea : (target.coverage || 0);
-        if (target.sqftPrice > 0 && mult > 0) {
-          const boxPrice = Math.round(target.sqftPrice * mult * 100) / 100;
-          target.price = boxPrice;
-          target.rate = boxPrice;
-        }
-        enriched++;
-      } else {
-        // Add new product to TILE_DB that doesn't exist yet
-        const mult = (billingArea > 0) ? billingArea : coverage;
-        const boxPrice = (sqftPrice > 0 && mult > 0) ? Math.round(sqftPrice * mult * 100) / 100 : 0;
-        TILE_DB.push({
-          name: displayName,
-          coverage: coverage,
-          billingArea: billingArea,
-          weight: weight || 0,
-          sqftPrice: sqftPrice,
-          sqftRate: sqftPrice,
-          price: boxPrice,
-          rate: boxPrice,
-          unit: 'Boxes'
-        });
-        existingMap.set(displayName, TILE_DB.length - 1);
-        added++;
-      }
+      nextTileDB.push({
+        name: displayName,
+        coverage: coverage,
+        billingArea: billingArea,
+        weight: weight || 0,
+        sqftPrice: sqftPrice,
+        sqftRate: sqftPrice,
+        price: boxPrice,
+        rate: boxPrice,
+        unit: 'Boxes'
+      });
     });
 
-    if (added > 0 || enriched > 0) {
+    if (nextTileDB.length > 0) {
+      TILE_DB = nextTileDB;
+      const searchEl = typeof tileSearchEl === 'function' ? tileSearchEl() : null;
+      if (!searchEl || !searchEl.value.trim()) {
+        filteredTiles = [...TILE_DB];
+      }
       localStorage.setItem('cached_tile_db', JSON.stringify(TILE_DB));
-      localStorage.setItem('cached_tile_db_version', 'v4_crm_price_sync');
-      console.log(`🔗 CRM Products → TILE_DB: ${enriched} enriched, ${added} new added (Total: ${TILE_DB.length})`);
+      localStorage.setItem('cached_tile_db_version', 'v5_crm_products_only');
+      console.log(`🔗 CRM Products → TILE_DB: loaded ${TILE_DB.length} products from CRM Product List`);
 
       // Sync active quotation items that are not manually customized
       if (Array.isArray(quotationItems) && quotationItems.length > 0) {

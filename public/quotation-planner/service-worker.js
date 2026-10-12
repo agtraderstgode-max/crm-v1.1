@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ag-traders-v20';
+const CACHE_NAME = 'ag-traders-v21';
 const ASSETS = [
   './',
   './style.css',
@@ -6,8 +6,7 @@ const ASSETS = [
   './manifest.json',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
-  './icons/icon-512.png',
-  './stock and price - Box planning (1).csv'
+  './icons/icon-512.png'
 ];
 
 // Install Event
