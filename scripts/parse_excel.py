@@ -51,7 +51,7 @@ GROUP_TO_CAT = {
     '24X24 GVT MATT': 'CAT025',
     'KAG FLOOR 24 X 24 WOODEN': 'CAT020',
     'FLOOR 24 X 24 PGVT WOOD RUSTIC': 'CAT025',
-    'KAG FLOOR 24 X 24 PGVT BOOK MATCH': 'CAT035',
+    'KAG FLOOR 24 X 24 PGVT BOOK MATCH': 'CAT025',
     'KAG 24X24 CARVING PORCELAIN': 'CAT021',
     'KAG FLOOR 24 X 24 SUGAR RUSTIC': 'CAT021',
     '24X24 ROTTO SUGAR PROCELAIN': 'CAT021',
@@ -84,8 +84,11 @@ GROUP_TO_CAT = {
 }
 
 def get_size(grp):
+    u = grp.upper()
+    if 'FLOOR 12X12' in u or 'FLOOR 12 X 12' in u:
+        return '12X12'
     for s in ['48X24', '48 X 24', '24X12', '24 X 12', '18X12', '18 X 12', '15X10', '15 X 10', '12X8', '12 X 8', '24X24', '24 X 24', '20X20', '20 X 20', '16X16', '16 X 16', '12X12', '12 X 12', '4 FEET', '3 FEET']:
-        if s in grp.upper():
+        if s in u:
             return s.replace(' ', '')
     return '18X12'
 

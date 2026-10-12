@@ -112,6 +112,35 @@ window.fetch = async function(input, init = {}) {
         }
         const { data: cats } = await supabaseClient.from('categories').select('*').range(0, 4999);
         const catMap = new Map((cats || []).map(c => [c.id, c]));
+        let customMap = {};
+        try {
+          const { data: qSetting } = await supabaseClient.from('settings').select('value').eq('key', 'category_quotation_sqft').maybeSingle();
+          if (qSetting && qSetting.value) customMap = qSetting.value;
+        } catch (e) {}
+
+        const getQuotationSqft = (cat) => {
+          if (!cat) return 0;
+          if (customMap && customMap[cat.id] != null) return parseFloat(customMap[cat.id]);
+          if (cat.sqft_per_box_quotation != null) return parseFloat(cat.sqft_per_box_quotation);
+          const size = (cat.size || '').toUpperCase().trim();
+          const pcs = parseInt(cat.pcs_per_box || 0);
+          const dimMatch = size.match(/(\d+)\s*[X*x]\s*(\d+)/);
+          if (dimMatch && pcs > 0) {
+            const w = parseFloat(dimMatch[1]);
+            const h = parseFloat(dimMatch[2]);
+            return Number(((w * h * pcs) / 144).toFixed(2));
+          }
+          if (size.includes('4 FEET') || size.includes('4FEET')) {
+            if (size.includes('RISER') || (cat.name || '').toUpperCase().includes('RISER')) return 10.67;
+            return 16.0;
+          }
+          if (size.includes('3 FEET') || size.includes('3FEET')) {
+            if (size.includes('RISER') || (cat.name || '').toUpperCase().includes('RISER')) return 8.0;
+            return 12.0;
+          }
+          return parseFloat(cat.sqft_per_box || 15.5);
+        };
+
         const enriched = prods.map(p => {
           const cat = catMap.get(p.category_id);
           return {
@@ -122,6 +151,7 @@ window.fetch = async function(input, init = {}) {
             price: cat ? `₹${cat.sqft_price}/sqft` : '',
             pcs_per_box: cat ? cat.pcs_per_box : 0,
             sqft_per_box: cat ? cat.sqft_per_box : 0,
+            sqft_per_box_quotation: cat ? getQuotationSqft(cat) : 0,
             weight_per_box: cat ? cat.weight_per_box : 0,
             category: cat ? cat.name : (p.category_id || '')
           };
@@ -265,10 +295,22 @@ function saveActiveDraftToStorage() {
   }
 }
 
+function findTileInDB(name) {
+  if (!name) return undefined;
+  const q = String(name).trim().toLowerCase();
+  if (!q) return undefined;
+  let exact = TILE_DB.find(t => t.name.trim().toLowerCase() === q);
+  if (exact) return exact;
+  return TILE_DB.find(t => {
+    const tn = t.name.trim().toLowerCase();
+    return tn.startsWith(q + ' ') || q.startsWith(tn + ' ');
+  });
+}
+
 function mapLoadedQuotationItems(rawItems) {
   if (!Array.isArray(rawItems)) return [];
   return rawItems.map(item => {
-    const dbTile = TILE_DB.find(t => t.name.toLowerCase() === (item.description || '').toLowerCase());
+    const dbTile = findTileInDB(item.description);
     const defaultCoverage = dbTile ? (dbTile.coverage || 0) : (item.coverage || 0);
     const defaultBillingArea = dbTile ? (dbTile.billingArea || 0) : (item.billingArea || 0);
     const defaultSqftRate = dbTile ? (dbTile.sqftPrice || dbTile.sqftRate || 0) : 0;
@@ -280,28 +322,34 @@ function mapLoadedQuotationItems(rawItems) {
       defaultRate = dbTile.price || 0;
     }
 
-    const hasCustomPrice = item.isCustomPrice === true ||
-      item.customSqftRate != null ||
-      item.customRate != null ||
-      (item.sqftRate != null && defaultSqftRate > 0 && Math.abs(item.sqftRate - defaultSqftRate) > 0.001) ||
-      (item.rate != null && defaultRate > 0 && Math.abs(item.rate - defaultRate) > 0.001);
+    // Only treat as custom price if explicitly marked custom and differs from its saved default
+    const hasCustomPrice = item.isCustomPrice === true && (
+      item.defaultSqftRate == null ||
+      Math.abs((item.sqftRate || 0) - item.defaultSqftRate) > 0.001 ||
+      Math.abs((item.rate || 0) - (item.defaultRate || 0)) > 0.001
+    );
 
-    const effectiveRate = item.rate != null ? item.rate : defaultRate;
-    const effectiveSqftRate = item.sqftRate != null ? item.sqftRate : defaultSqftRate;
+    const effectiveSqftRate = (hasCustomPrice || item.isCustom)
+      ? (item.customSqftRate != null ? item.customSqftRate : (item.sqftRate != null ? item.sqftRate : defaultSqftRate))
+      : (defaultSqftRate > 0 ? defaultSqftRate : (item.sqftRate != null ? item.sqftRate : 0));
+
+    const effectiveRate = (hasCustomPrice || item.isCustom)
+      ? (item.customRate != null ? item.customRate : (item.rate != null ? item.rate : defaultRate))
+      : (defaultRate > 0 ? defaultRate : (item.rate != null ? item.rate : 0));
 
     return {
       ...item,
       rate: effectiveRate,
       sqftRate: effectiveSqftRate,
-      defaultRate: item.defaultRate != null ? item.defaultRate : defaultRate,
-      defaultSqftRate: item.defaultSqftRate != null ? item.defaultSqftRate : defaultSqftRate,
+      defaultRate: defaultRate > 0 ? defaultRate : (item.defaultRate != null ? item.defaultRate : 0),
+      defaultSqftRate: defaultSqftRate > 0 ? defaultSqftRate : (item.defaultSqftRate != null ? item.defaultSqftRate : 0),
       isCustomPrice: !!hasCustomPrice,
-      customRate: hasCustomPrice ? (item.customRate != null ? item.customRate : effectiveRate) : null,
-      customSqftRate: hasCustomPrice ? (item.customSqftRate != null ? item.customSqftRate : effectiveSqftRate) : null,
-      coverage: item.coverage != null ? item.coverage : defaultCoverage,
-      billingArea: item.billingArea != null ? item.billingArea : defaultBillingArea,
+      customRate: hasCustomPrice ? effectiveRate : null,
+      customSqftRate: hasCustomPrice ? effectiveSqftRate : null,
+      coverage: defaultCoverage > 0 ? defaultCoverage : (item.coverage || 0),
+      billingArea: defaultBillingArea > 0 ? defaultBillingArea : (item.billingArea || 0),
       unit: item.unit || (dbTile ? dbTile.unit : 'Boxes'),
-      amount: item.amount != null ? item.amount : ((parseFloat(item.quantity) || 0) * effectiveRate)
+      amount: (parseFloat(item.quantity) || 0) * effectiveRate
     };
   });
 }
@@ -713,7 +761,7 @@ function parseCSV(text) {
 }
 
 async function loadCSVOnStartup() {
-  const CACHE_VERSION = 'v3_billing_col_fix'; // bump this to force cache refresh
+  const CACHE_VERSION = 'v4_crm_price_sync'; // bump this to force cache refresh
   const cached = localStorage.getItem('cached_tile_db');
   const cachedVersion = localStorage.getItem('cached_tile_db_version');
   if (cached && cachedVersion === CACHE_VERSION) {
@@ -747,7 +795,7 @@ async function loadCSVOnStartup() {
         if (parsed.length > 0) {
           TILE_DB = parsed;
           localStorage.setItem('cached_tile_db', JSON.stringify(TILE_DB));
-          localStorage.setItem('cached_tile_db_version', 'v3_billing_col_fix');
+          localStorage.setItem('cached_tile_db_version', CACHE_VERSION);
           console.log(`Loaded and cached ${TILE_DB.length} tiles from dynamic CSV fetch of ${file}`);
           break;
         }
@@ -757,7 +805,7 @@ async function loadCSVOnStartup() {
     }
   }
 
-  // After CSV loading, enrich TILE_DB with CRM products data (sqftPrice, weight)
+  // After CSV loading, enrich TILE_DB with CRM products data (sqftPrice, weight, billingArea)
   await loadProductsIntoTileDB();
 }
 
@@ -801,8 +849,19 @@ async function loadProductsIntoTileDB() {
       // Strategy 3: Check if any TILE_DB entry starts with product name + dim
       // e.g. TILE_DB has "HG IMPALA BLACK 48X24", product is "HG IMPALA BLACK 48X24 HG"
       for (const [tdbName, idx] of existingMap) {
-        if (displayName.startsWith(tdbName) || tdbName.startsWith(displayName)) {
+        if (displayName.startsWith(tdbName + ' ') || tdbName.startsWith(displayName + ' ')) {
           return idx;
+        }
+      }
+
+      // Strategy 4: Match by nameOnly prefix if TILE_DB entry starts with nameOnly followed by a dimension
+      // e.g. TILE_DB has "BLOOM F 12X12 SM MAT" or "71183 F 15X10 WP", product nameOnly is "BLOOM F" / "71183 F"
+      for (const [tdbName, idx] of existingMap) {
+        if (tdbName.startsWith(nameOnly + ' ')) {
+          const rest = tdbName.slice(nameOnly.length + 1).trim();
+          if (/^\d+X\d+/i.test(rest)) {
+            return idx;
+          }
         }
       }
 
@@ -822,6 +881,15 @@ async function loadProductsIntoTileDB() {
       return 10.0;
     };
 
+    // Helper: default billing area by dimension string
+    const getFallbackBillingArea = (dim) => {
+      if (dim.includes('48X24') || dim.includes('24X24')) return 16;
+      if (dim.includes('18X12') || dim.includes('12X12') || dim.includes('16X16')) return 9;
+      if (dim.includes('15X10')) return 8.33;
+      if (dim.includes('12X8') || dim.includes('18X10')) return 8;
+      return 0;
+    };
+
     products.forEach(p => {
       if (!p.name || !p.size || p.size === 'N/A') return;
 
@@ -832,26 +900,42 @@ async function loadProductsIntoTileDB() {
       
       const sqftPrice = p.sqft_price || parseFloat(String(p.price || '').replace(/[^\d.]/g, '')) || 0;
       const coverage = p.sqft_per_box || getFallbackCoverage(dimension);
-      const billingArea = p.sqft_per_box_quotation || p.billingArea || 0;
+      const billingArea = p.sqft_per_box_quotation || p.billingArea || getFallbackBillingArea(dimension);
       const weight = p.weight_per_box || 0;
 
       const matchIdx = findMatch(displayName, nameOnly, dimension);
 
       if (matchIdx !== undefined) {
         // Enrich existing TILE_DB entry with pricing from CRM products
-        if (sqftPrice > 0) TILE_DB[matchIdx].sqftPrice = sqftPrice;
-        if (coverage > 0) TILE_DB[matchIdx].coverage = coverage;
-        if (billingArea > 0) TILE_DB[matchIdx].billingArea = billingArea;
-        if (weight > 0) TILE_DB[matchIdx].weight = weight;
+        const target = TILE_DB[matchIdx];
+        if (sqftPrice > 0) {
+          target.sqftPrice = sqftPrice;
+          target.sqftRate = sqftPrice;
+        }
+        if (coverage > 0) target.coverage = coverage;
+        if (billingArea > 0) target.billingArea = billingArea;
+        if (weight > 0) target.weight = weight;
+        const mult = (target.billingArea > 0) ? target.billingArea : (target.coverage || 0);
+        if (target.sqftPrice > 0 && mult > 0) {
+          const boxPrice = Math.round(target.sqftPrice * mult * 100) / 100;
+          target.price = boxPrice;
+          target.rate = boxPrice;
+        }
         enriched++;
       } else {
         // Add new product to TILE_DB that doesn't exist yet
+        const mult = (billingArea > 0) ? billingArea : coverage;
+        const boxPrice = (sqftPrice > 0 && mult > 0) ? Math.round(sqftPrice * mult * 100) / 100 : 0;
         TILE_DB.push({
           name: displayName,
           coverage: coverage,
           billingArea: billingArea,
           weight: weight || 0,
-          sqftPrice: sqftPrice
+          sqftPrice: sqftPrice,
+          sqftRate: sqftPrice,
+          price: boxPrice,
+          rate: boxPrice,
+          unit: 'Boxes'
         });
         existingMap.set(displayName, TILE_DB.length - 1);
         added++;
@@ -859,7 +943,47 @@ async function loadProductsIntoTileDB() {
     });
 
     if (added > 0 || enriched > 0) {
+      localStorage.setItem('cached_tile_db', JSON.stringify(TILE_DB));
+      localStorage.setItem('cached_tile_db_version', 'v4_crm_price_sync');
       console.log(`🔗 CRM Products → TILE_DB: ${enriched} enriched, ${added} new added (Total: ${TILE_DB.length})`);
+
+      // Sync active quotation items that are not manually customized
+      if (Array.isArray(quotationItems) && quotationItems.length > 0) {
+        let updatedAny = false;
+        quotationItems.forEach(item => {
+          if (item.isCustom) return;
+          const dbTile = findTileInDB(item.description);
+          if (!dbTile) return;
+          const newDefaultSqftRate = dbTile.sqftPrice || dbTile.sqftRate || 0;
+          const newCoverage = dbTile.coverage || item.coverage || 0;
+          const newBillingArea = dbTile.billingArea || item.billingArea || 0;
+          const mult = newBillingArea > 0 ? newBillingArea : newCoverage;
+          const newDefaultRate = (newDefaultSqftRate > 0 && mult > 0)
+            ? Math.round(newDefaultSqftRate * mult * 100) / 100
+            : (dbTile.price || 0);
+
+          if (newCoverage > 0) item.coverage = newCoverage;
+          if (newBillingArea > 0) item.billingArea = newBillingArea;
+          if (newDefaultSqftRate > 0) item.defaultSqftRate = newDefaultSqftRate;
+          if (newDefaultRate > 0) item.defaultRate = newDefaultRate;
+
+          if (!item.isCustomPrice) {
+            if (newDefaultSqftRate > 0 && Math.abs((item.sqftRate || 0) - newDefaultSqftRate) > 0.001) {
+              item.sqftRate = newDefaultSqftRate;
+              updatedAny = true;
+            }
+            if (newDefaultRate > 0 && Math.abs((item.rate || 0) - newDefaultRate) > 0.001) {
+              item.rate = newDefaultRate;
+              item.amount = (parseFloat(item.quantity) || 0) * item.rate;
+              updatedAny = true;
+            }
+          }
+        });
+        if (updatedAny && typeof renderQuotation === 'function') {
+          renderQuotation();
+          saveActiveDraftToStorage();
+        }
+      }
     }
   } catch (e) {
     console.warn('⚠️ CRM products pipeline failed (non-critical):', e);
@@ -886,7 +1010,7 @@ function handleCSVUpload(event) {
     if (parsed.length > 0) {
       TILE_DB = parsed;
       localStorage.setItem('cached_tile_db', JSON.stringify(TILE_DB));
-      localStorage.setItem('cached_tile_db_version', 'v3_billing_col_fix');
+      localStorage.setItem('cached_tile_db_version', 'v4_crm_price_sync');
       alert(`Successfully loaded ${TILE_DB.length} tiles from "${file.name}"!`);
       
       filteredTiles = [...TILE_DB];
@@ -2151,7 +2275,7 @@ function generateQuotationFromPlan() {
   rooms.forEach(r => {
     if (!r.tileName) return;
     if (!tileMap[r.tileName]) {
-      const dbTile = TILE_DB.find(t => t.name.toLowerCase() === r.tileName.toLowerCase());
+      const dbTile = findTileInDB(r.tileName);
       const coverage = dbTile ? (dbTile.coverage || 0) : (r.coverage || 0);
       const billingArea = dbTile ? (dbTile.billingArea || 0) : 0;
       const defaultSqftRate = dbTile ? (dbTile.sqftPrice || dbTile.sqftRate || 0) : 0;
@@ -2191,12 +2315,10 @@ function generateQuotationFromPlan() {
   let newItems = Object.values(tileMap).map(tileInfo => {
     const existing = existingMap.get(tileInfo.description.trim().toLowerCase());
 
-    const hasCustomPrice = existing && (
-      existing.isCustomPrice === true ||
-      existing.customSqftRate != null ||
-      existing.customRate != null ||
-      (existing.sqftRate != null && tileInfo.defaultSqftRate > 0 && Math.abs(existing.sqftRate - tileInfo.defaultSqftRate) > 0.001) ||
-      (existing.rate != null && tileInfo.defaultRate > 0 && Math.abs(existing.rate - tileInfo.defaultRate) > 0.001)
+    const hasCustomPrice = existing && existing.isCustomPrice === true && (
+      existing.defaultSqftRate == null ||
+      Math.abs((existing.sqftRate || 0) - existing.defaultSqftRate) > 0.001 ||
+      Math.abs((existing.rate || 0) - (existing.defaultRate || 0)) > 0.001
     );
 
     let effectiveRate = tileInfo.defaultRate;
@@ -2392,7 +2514,7 @@ function handleQuoteChange(idx, field, val) {
   
   if (field === 'description') {
     item.description = val;
-    const dbTile = TILE_DB.find(t => t.name.toLowerCase() === val.trim().toLowerCase());
+    const dbTile = findTileInDB(val);
     if (dbTile) {
       item.coverage = dbTile.coverage || 0;
       item.billingArea = dbTile.billingArea || 0;
@@ -2632,8 +2754,12 @@ function selectQuoteTile(idx, tileOptionIdx) {
   item.coverage = tile.coverage || 0;
   item.billingArea = tile.billingArea || 0;
   item.sqftRate = tile.sqftPrice || tile.sqftRate || 0;
+  item.defaultSqftRate = item.sqftRate;
   item.unit = tile.unit || 'Boxes';
   item.isCustom = false;
+  item.isCustomPrice = false;
+  item.customSqftRate = null;
+  item.customRate = null;
   
   // Rate = billingArea * sqftRate; fallback to coverage * sqftRate or stored price
   const multiplier = item.billingArea > 0 ? item.billingArea : item.coverage;
@@ -2642,10 +2768,15 @@ function selectQuoteTile(idx, tileOptionIdx) {
   } else {
     item.rate = tile.price || 0;
   }
+  item.defaultRate = item.rate;
   
   item.amount = item.quantity * item.rate;
   
   renderQuotation();
+  saveActiveDraftToStorage();
+  if (typeof activeEstimateId !== 'undefined' && activeEstimateId && typeof supabaseClient !== 'undefined' && supabaseClient) {
+    savePlanToCloudSilent();
+  }
 }
 
 function closeQuoteDropdownDelayed(idx) {

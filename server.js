@@ -813,6 +813,27 @@ app.delete('/api/contacts/:id', (req, res) => {
   enqueueSync('contacts', 'delete', { id })
 })
 
+function getQuotationSqft(cat) {
+  if (cat.sqft_per_box_quotation != null) return parseFloat(cat.sqft_per_box_quotation)
+  const size = (cat.size || '').toUpperCase().trim()
+  const pcs = parseInt(cat.pcs_per_box || 0)
+  const dimMatch = size.match(/(\d+)\s*[X*x]\s*(\d+)/)
+  if (dimMatch && pcs > 0) {
+    const w = parseFloat(dimMatch[1])
+    const h = parseFloat(dimMatch[2])
+    return Number(((w * h * pcs) / 144).toFixed(2))
+  }
+  if (size.includes('4 FEET') || size.includes('4FEET')) {
+    if (size.includes('RISER') || (cat.name || '').toUpperCase().includes('RISER')) return 10.67
+    return 16.0
+  }
+  if (size.includes('3 FEET') || size.includes('3FEET')) {
+    if (size.includes('RISER') || (cat.name || '').toUpperCase().includes('RISER')) return 8.0
+    return 12.0
+  }
+  return parseFloat(cat.sqft_per_box || 15.5)
+}
+
 // ─── GET /api/products ───────────────────────────────────────────────────────────
 app.get('/api/products', (req, res) => {
   const products = getLocalProducts()
@@ -830,6 +851,7 @@ app.get('/api/products', (req, res) => {
           price: `₹${cat.sqft_price}/sqft`,
           pcs_per_box: cat.pcs_per_box,
           sqft_per_box: cat.sqft_per_box,
+          sqft_per_box_quotation: getQuotationSqft(cat),
           weight_per_box: cat.weight_per_box,
           category: cat.name // map display category in UI
         }
