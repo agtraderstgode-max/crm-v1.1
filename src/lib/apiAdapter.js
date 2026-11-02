@@ -911,7 +911,7 @@ function getQuotationSqft(cat, customMap = {}) {
             mrp: cat.mrp,
             online_price: cat.online_price,
             sqft_price: cat.sqft_price,
-            price: p.price || displayPrice,
+            price: displayPrice,
             pcs_per_box: cat.pcs_per_box,
             sqft_per_box: cat.sqft_per_box,
             sqft_per_box_quotation: (isSan || isAdh || isHard) ? 1 : getQuotationSqft(cat, customMap),
@@ -1370,8 +1370,16 @@ function getQuotationSqft(cat, customMap = {}) {
     if (cats && cats.length > 0) {
       const targetCats = cats.filter(c => {
         if (targetBrand === 'ALL') return true
-        const b = brandMap[c.id] || (c.type === 'SANITARY' ? 'PUPA' : c.type === 'ADHESIVE' ? 'ROFF' : 'KAG')
-        return b === targetBrand
+        let b = brandMap[c.id]
+        if (!b) {
+          const uType = (c.type || '').toUpperCase()
+          const uName = (c.name || '').toUpperCase()
+          const uId = (c.id || '').toUpperCase()
+          if (uType === 'SANITARY' || uName.includes('PUPA') || uId.includes('PUPA')) b = 'PUPA'
+          else if (uType === 'ADHESIVE' || uName.includes('ROFF') || uId.includes('ROFF')) b = 'ROFF'
+          else b = 'KAG'
+        }
+        return b.toUpperCase() === targetBrand
       })
 
       const updatedCats = targetCats.map(c => {
@@ -1380,7 +1388,14 @@ function getQuotationSqft(cat, customMap = {}) {
         const online_price = Math.round(mrp * (1 - pct / 100))
         const sqft_price = Math.round(online_price / (sqft || 1))
         return {
-          ...c,
+          id: c.id,
+          size: c.size,
+          name: c.name,
+          type: c.type,
+          sqft_per_box: c.sqft_per_box,
+          pcs_per_box: c.pcs_per_box,
+          weight_per_box: c.weight_per_box,
+          mrp: c.mrp,
           discount_pct: pct,
           online_price,
           sqft_price
@@ -1388,7 +1403,8 @@ function getQuotationSqft(cat, customMap = {}) {
       })
 
       for (let i = 0; i < updatedCats.length; i += 20) {
-        await supabase.from('categories').upsert(updatedCats.slice(i, i + 20), { onConflict: 'id' })
+        const { error: upErr } = await supabase.from('categories').upsert(updatedCats.slice(i, i + 20), { onConflict: 'id' })
+        if (upErr) console.error('Error updating categories discount in Supabase:', upErr)
       }
     }
 

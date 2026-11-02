@@ -99,6 +99,7 @@ export function PriceCategoriesPage() {
   const [targetDiscountBrand, setTargetDiscountBrand] = useState('ALL')
   const [brandDiscountInput, setBrandDiscountInput] = useState(10)
   const [applying, setApplying] = useState(false)
+  const [toastMsg, setToastMsg] = useState(null)
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -165,28 +166,60 @@ export function PriceCategoriesPage() {
 
   // Discount Action (Brand-specific or Global)
   const handleApplyDiscount = async () => {
-    const isGlobal = targetDiscountBrand === 'ALL'
-    const targetMsg = isGlobal ? `all ${categories.length} classifications globally` : `all ${targetDiscountBrand} classifications`
-    if (!confirm(`Are you sure you want to set ${brandDiscountInput}% discount for ${targetMsg}? This will recalculate the Online Price and Sqft Price.`)) return
-    
+    const newPct = parseFloat(brandDiscountInput)
+    if (isNaN(newPct) || newPct < 0 || newPct > 100) {
+      alert('Please enter a valid discount percentage between 0 and 100.')
+      return
+    }
+
     setApplying(true)
+
+    // 1. Optimistic React State Update (Instant visual feedback)
+    if (targetDiscountBrand === 'ALL') {
+      setDiscountPct(newPct)
+      setBrandDiscounts(prev => {
+        const next = { ...prev }
+        availableBrands.forEach(b => { if (b !== 'ALL') next[b] = newPct })
+        return next
+      })
+    } else {
+      setBrandDiscounts(prev => ({ ...prev, [targetDiscountBrand]: newPct }))
+    }
+
+    setCategories(prev => prev.map(c => {
+      const b = (c.brand || 'KAG').toUpperCase()
+      if (targetDiscountBrand !== 'ALL' && b !== targetDiscountBrand) return c
+      const mrp = parseFloat(c.mrp || 0)
+      const sqft = parseFloat(c.sqft_per_box || 1)
+      const online_price = Math.round(mrp * (1 - newPct / 100))
+      const sqft_price = Math.round(online_price / (sqft || 1))
+      return {
+        ...c,
+        discount_pct: newPct,
+        online_price,
+        sqft_price
+      }
+    }))
+
     try {
       const res = await fetch('/api/pricing-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           brand: targetDiscountBrand,
-          discount_percentage: parseFloat(brandDiscountInput) 
+          discount_percentage: newPct 
         })
       })
       if (res.ok) {
-        alert(`🎉 Discount updated for ${targetDiscountBrand} (${brandDiscountInput}%) successfully!`)
+        setToastMsg(`✓ Successfully applied ${newPct}% discount to ${targetDiscountBrand === 'ALL' ? 'all brands' : targetDiscountBrand}!`)
+        setTimeout(() => setToastMsg(null), 4000)
         fetchCategories()
       } else {
-        alert('Failed to update discount.')
+        alert('Failed to update discount on server.')
       }
     } catch (err) {
       console.error(err)
+      alert('Error updating discount: ' + err.message)
     } finally {
       setApplying(false)
     }
@@ -489,7 +522,8 @@ export function PriceCategoriesPage() {
                   </th>
                   <th className="px-5 py-3.5 text-orange-600 font-semibold">Wt (kg)</th>
                   <th className="px-5 py-3.5 text-slate-900 font-bold">MRP (₹)</th>
-                  <th className="px-5 py-3.5">Online Price (₹)</th>
+                  <th className="px-5 py-3.5 text-center font-bold text-purple-700 whitespace-nowrap">Discount</th>
+                  <th className="px-5 py-3.5 font-bold text-emerald-700">Online Price (₹)</th>
                   <th className="px-5 py-3.5 text-center">Linked Products</th>
                   <th className="px-5 py-3.5 font-semibold text-blue-600">
                     {selectedBrand === 'PUPA' || typeFilter === 'SANITARY' 
@@ -555,6 +589,11 @@ export function PriceCategoriesPage() {
                       </td>
                       <td className="px-5 py-3.5 font-bold text-slate-900">
                         ₹{c.mrp}
+                      </td>
+                      <td className="px-5 py-3.5 text-center">
+                        <span className="inline-flex items-center rounded-md bg-purple-50 px-2 py-0.5 text-xs font-black text-purple-700 border border-purple-200">
+                          {c.discount_pct !== undefined ? c.discount_pct : (brandDiscounts[b] !== undefined ? brandDiscounts[b] : discountPct)}%
+                        </span>
                       </td>
                       <td className="px-5 py-3.5 font-bold text-emerald-600">
                         ₹{c.online_price}
@@ -880,6 +919,13 @@ export function PriceCategoriesPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+      {/* Toast Notification */}
+      {toastMsg && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white shadow-2xl border border-slate-700 animate-in fade-in slide-in-from-bottom duration-200">
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+          <span>{toastMsg}</span>
         </div>
       )}
     </div>

@@ -868,7 +868,7 @@ app.get('/api/products', (req, res) => {
           mrp: cat.mrp,
           online_price: cat.online_price,
           sqft_price: cat.sqft_price,
-          price: p.price || displayPrice,
+          price: displayPrice,
           pcs_per_box: cat.pcs_per_box,
           sqft_per_box: cat.sqft_per_box,
           sqft_per_box_quotation: (isSan || isAdh || isHard) ? 1 : getQuotationSqft(cat),
@@ -1027,7 +1027,7 @@ app.post('/api/pricing-settings', (req, res) => {
   // Update local categories
   const categories = getLocalCategories()
   const updatedCategories = categories.map(c => {
-    const cBrand = (c.brand || 'KAG').toUpperCase()
+    const cBrand = (c.brand || (c.type === 'SANITARY' || c.id?.includes('PUPA') ? 'PUPA' : c.type === 'ADHESIVE' || c.id?.includes('ROFF') ? 'ROFF' : 'KAG')).toUpperCase()
     if (brand !== 'ALL' && cBrand !== brand.toUpperCase()) return c
 
     const mrp = parseFloat(c.mrp || 0)
