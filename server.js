@@ -842,11 +842,22 @@ app.get('/api/products', (req, res) => {
   const categories = getLocalCategories()
   
   const joined = products.map(p => {
+    const brand = p.brand || 'KAG'
+    const hsn_code = p.hsn_code || '69072300'
+    const tax_percent = p.tax_percent != null ? p.tax_percent : 18
+    const gst_percent = p.gst_percent != null ? p.gst_percent : 18
+    const purchase_rate = p.purchase_rate != null ? p.purchase_rate : 0
+
     if (p.category_id && p.category_id !== 'NO_CAT') {
       const cat = categories.find(c => c.id === p.category_id)
       if (cat) {
         return {
           ...p,
+          brand,
+          hsn_code,
+          tax_percent,
+          gst_percent,
+          purchase_rate,
           mrp: cat.mrp,
           online_price: cat.online_price,
           sqft_price: cat.sqft_price,
@@ -861,10 +872,22 @@ app.get('/api/products', (req, res) => {
     } else if (p.category_id === 'NO_CAT') {
       return {
         ...p,
+        brand,
+        hsn_code,
+        tax_percent,
+        gst_percent,
+        purchase_rate,
         category: 'No Category'
       }
     }
-    return p
+    return {
+      ...p,
+      brand,
+      hsn_code,
+      tax_percent,
+      gst_percent,
+      purchase_rate
+    }
   })
   res.json(joined)
 })

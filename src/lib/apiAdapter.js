@@ -807,12 +807,30 @@ function getQuotationSqft(cat, customMap = {}) {
       if (qSetting && qSetting.value) customMap = qSetting.value
     } catch (e) {}
 
+    let productHsnTaxMap = {}
+    try {
+      const { data: taxSetting } = await supabase.from('settings').select('value').eq('key', 'product_hsn_tax_map').maybeSingle()
+      if (taxSetting && taxSetting.value) productHsnTaxMap = taxSetting.value
+    } catch (e) {}
+
     const joined = (prods || []).map(p => {
+      const meta = productHsnTaxMap[p.id] || {}
+      const hsn_code = p.hsn_code || meta.hsn_code || '69072300'
+      const tax_percent = p.tax_percent != null ? p.tax_percent : (meta.tax_percent != null ? meta.tax_percent : 18)
+      const gst_percent = p.gst_percent != null ? p.gst_percent : (meta.gst_percent != null ? meta.gst_percent : 18)
+      const purchase_rate = p.purchase_rate != null ? p.purchase_rate : (meta.purchase_rate || 0)
+      const brand = p.brand || meta.brand || 'KAG'
+
       if (p.category_id && p.category_id !== 'NO_CAT') {
         const cat = categories.find(c => c.id === p.category_id)
         if (cat) {
           return {
             ...p,
+            brand,
+            hsn_code,
+            tax_percent,
+            gst_percent,
+            purchase_rate,
             mrp: cat.mrp,
             online_price: cat.online_price,
             sqft_price: cat.sqft_price,
@@ -825,25 +843,58 @@ function getQuotationSqft(cat, customMap = {}) {
           }
         }
       }
-      return p
+      return {
+        ...p,
+        brand,
+        hsn_code,
+        tax_percent,
+        gst_percent,
+        purchase_rate
+      }
     })
     return jsonResponse(joined)
   }
 
   if (pathname === '/api/products' && method === 'POST') {
+    const prodId = body.id || `TL-${Date.now().toString().slice(-4)}`
+    const { hsn_code, tax_percent, gst_percent, purchase_rate, ...cleanProd } = body
     const newProduct = {
-      ...body,
-      id: body.id || `TL-${Date.now().toString().slice(-4)}`
+      ...cleanProd,
+      id: prodId
     }
     const { error } = await supabase.from('products').insert([newProduct])
     if (error) return jsonResponse({ error: error.message }, 400)
-    return jsonResponse(newProduct, 201)
+
+    if (hsn_code || tax_percent || gst_percent || purchase_rate || body.brand) {
+      try {
+        const { data: taxSetting } = await supabase.from('settings').select('value').eq('key', 'product_hsn_tax_map').maybeSingle()
+        const currentMap = taxSetting?.value || {}
+        currentMap[prodId] = {
+          hsn_code: hsn_code || '69072300',
+          tax_percent: parseFloat(tax_percent || gst_percent) || 18,
+          gst_percent: parseFloat(gst_percent || tax_percent) || 18,
+          purchase_rate: parseFloat(purchase_rate) || 0,
+          brand: body.brand || ''
+        }
+        await supabase.from('settings').upsert([{ key: 'product_hsn_tax_map', value: currentMap }], { onConflict: 'key' })
+      } catch (err) {
+        console.warn('Could not save product tax map:', err.message)
+      }
+    }
+
+    return jsonResponse({
+      ...newProduct,
+      hsn_code: hsn_code || '69072300',
+      tax_percent: parseFloat(tax_percent || gst_percent) || 18,
+      gst_percent: parseFloat(gst_percent || tax_percent) || 18,
+      purchase_rate: parseFloat(purchase_rate) || 0
+    }, 201)
   }
 
   const productIdMatch = pathname.match(/^\/api\/products\/([^/]+)$/)
   if (productIdMatch && method === 'PUT') {
     const id = productIdMatch[1]
-    const updateData = { ...body }
+    const { hsn_code, tax_percent, gst_percent, purchase_rate, ...updateData } = body
     delete updateData.category // calculated field
     delete updateData.mrp
     delete updateData.online_price
@@ -854,7 +905,34 @@ function getQuotationSqft(cat, customMap = {}) {
     delete updateData.weight_per_box
     const { error } = await supabase.from('products').update(updateData).eq('id', id)
     if (error) return jsonResponse({ error: error.message }, 400)
-    return jsonResponse({ success: true, id, ...body })
+
+    if (hsn_code || tax_percent || gst_percent || purchase_rate || body.brand) {
+      try {
+        const { data: taxSetting } = await supabase.from('settings').select('value').eq('key', 'product_hsn_tax_map').maybeSingle()
+        const currentMap = taxSetting?.value || {}
+        currentMap[id] = {
+          ...(currentMap[id] || {}),
+          hsn_code: hsn_code || currentMap[id]?.hsn_code || '69072300',
+          tax_percent: parseFloat(tax_percent || gst_percent) || currentMap[id]?.tax_percent || 18,
+          gst_percent: parseFloat(gst_percent || tax_percent) || currentMap[id]?.gst_percent || 18,
+          purchase_rate: parseFloat(purchase_rate) != null ? parseFloat(purchase_rate) : (currentMap[id]?.purchase_rate || 0),
+          brand: body.brand || currentMap[id]?.brand || ''
+        }
+        await supabase.from('settings').upsert([{ key: 'product_hsn_tax_map', value: currentMap }], { onConflict: 'key' })
+      } catch (err) {
+        console.warn('Could not update product tax map:', err.message)
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      id,
+      ...body,
+      hsn_code: hsn_code || '69072300',
+      tax_percent: parseFloat(tax_percent || gst_percent) || 18,
+      gst_percent: parseFloat(gst_percent || tax_percent) || 18,
+      purchase_rate: parseFloat(purchase_rate) || 0
+    })
   }
 
   if (productIdMatch && method === 'DELETE') {

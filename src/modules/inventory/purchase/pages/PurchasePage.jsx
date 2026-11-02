@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { 
-  UploadCloud, Check, X, FileText, Settings, ShieldAlert, Sparkles, Eye, Receipt, Calendar, Trash2, Mail, MessageSquare, Send, Download 
+  UploadCloud, Check, X, FileText, Settings, ShieldAlert, Sparkles, Eye, Receipt, Calendar, Trash2, Mail, MessageSquare, Send, Download, Filter, Boxes, PieChart, Building2, Search, Tag, Layers, ArrowUpDown
 } from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
 
@@ -1091,6 +1091,10 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
             size: item.size || 'N/A',
             finish: item.finish || 'Matte',
             price: (item.category_id && item.category_id !== 'NO_CAT') ? '' : `₹${Math.round(item.rate * 1.35)}/sqft`,
+            hsn_code: item.hsn_code || '69072300',
+            tax_percent: parseFloat(invoice.tax_percent) || 18,
+            gst_percent: parseFloat(invoice.tax_percent) || 18,
+            purchase_rate: parseFloat(item.rate) || 0,
             stock: item.quantity,
             reserved: 0,
             available: item.quantity,
@@ -1107,6 +1111,11 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
           if (prod) {
             const updated = {
               ...prod,
+              brand: item.brand || prod.brand || invoice.supplier_name || 'KAG',
+              hsn_code: item.hsn_code || prod.hsn_code || '69072300',
+              tax_percent: parseFloat(invoice.tax_percent) || prod.tax_percent || 18,
+              gst_percent: parseFloat(invoice.tax_percent) || prod.gst_percent || 18,
+              purchase_rate: parseFloat(item.rate) || prod.purchase_rate || 0,
               stock: (prod.stock || 0) + item.quantity,
               available: ((prod.stock || 0) + item.quantity) - (prod.reserved || 0)
             }
@@ -1335,13 +1344,20 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
   )
 }
 
-function AuditorSummaryModal({ isOpen, onClose, filteredInvoices, selectedMonthName, taxableTotal, cgstTotal, sgstTotal, igstTotal, grandTotal }) {
+function AuditorSummaryModal({ isOpen, onClose, filteredInvoices, selectedMonthName, taxableTotal, cgstTotal, sgstTotal, igstTotal, grandTotal, hsnSummary = [] }) {
   const [email, setEmail] = useState(localStorage.getItem('auditor_email') || '')
   const [phone, setPhone] = useState(localStorage.getItem('auditor_phone') || '')
 
   if (!isOpen) return null
 
   const totalGst = cgstTotal + sgstTotal + igstTotal
+
+  const hsnText = (hsnSummary && hsnSummary.length > 0)
+    ? `\n\nHSN-wise GST Purchase Segregation:\n` +
+      `----------------------------------------------\n` +
+      hsnSummary.map(h => `• HSN ${h.hsn_code} (${h.description}): ${h.total_qty} boxes | Taxable: ₹${Math.round(h.taxable_amount).toLocaleString('en-IN')} | GST (${h.tax_percent}%): ₹${Math.round(h.gst_amount).toLocaleString('en-IN')}`).join('\n') +
+      `\n----------------------------------------------`
+    : ''
   
   const reportBody = `Dear Auditor,
 
@@ -1356,8 +1372,9 @@ IGST Amount (Integrated):   ₹${igstTotal.toLocaleString('en-IN', { minimumFrac
 ----------------------------------------------
 Total GST Tax Value:        ₹${totalGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 Grand Total Invoice Value:  ₹${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+${hsnText}
 
-Please download the detailed CSV file sent separately for complete line item details.
+Please download the detailed CSV files for individual invoice lines & HSN summary.
 
 Thank you.`
 
@@ -1478,6 +1495,9 @@ export function PurchasePage() {
   const [selectedInvoice, setSelectedInvoice] = useState(null)
   const [approveInvoice, setApproveInvoice] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState('ALL')
+  const [selectedCompany, setSelectedCompany] = useState('ALL')
+  const [activeTab, setActiveTab] = useState('invoices') // 'invoices' | 'company_products' | 'hsn_summary'
+  const [searchQuery, setSearchQuery] = useState('')
   const [auditorModalOpen, setAuditorModalOpen] = useState(false)
 
   const fetchProducts = () => {
@@ -1506,78 +1526,251 @@ export function PurchasePage() {
   }
 
   // Calculate dynamic list of months present in imported invoices
-  const uniqueMonths = Array.from(
-    new Set(
-      invoices
-        .map(inv => (inv.date ? inv.date.substring(0, 7) : null))
-        .filter(Boolean)
-    )
-  ).sort().reverse();
+  const uniqueMonths = useMemo(() => {
+    return Array.from(
+      new Set(
+        invoices
+          .map(inv => (inv.date ? inv.date.substring(0, 7) : null))
+          .filter(Boolean)
+      )
+    ).sort().reverse()
+  }, [invoices])
 
-  // Get current and last month string formats
-  const today = new Date();
-  const thisMonthStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
-  const lmYear = today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear();
-  const lmMonth = today.getMonth() === 0 ? 12 : today.getMonth();
-  const lastMonthStr = lmYear + '-' + String(lmMonth).padStart(2, '0');
+  // Dynamic list of unique supplier / brand companies across all invoices
+  const uniqueCompanies = useMemo(() => {
+    const map = new Map()
+    invoices.forEach(inv => {
+      if (inv.supplier_name && inv.supplier_name.trim()) {
+        const s = inv.supplier_name.trim()
+        map.set(s.toUpperCase(), s)
+      }
+      (inv.items || []).forEach(it => {
+        if (it.brand && it.brand.trim()) {
+          const b = it.brand.trim()
+          map.set(b.toUpperCase(), b)
+        }
+      })
+    })
+    return Array.from(map.values()).sort()
+  }, [invoices])
 
-  // Filter invoices list
-  const filteredInvoices = invoices.filter(inv => {
-    if (selectedMonth === 'ALL') return true;
-    const invMonth = inv.date ? inv.date.substring(0, 7) : '';
-    if (selectedMonth === 'THIS_MONTH') return invMonth === thisMonthStr;
-    if (selectedMonth === 'LAST_MONTH') return invMonth === lastMonthStr;
-    return invMonth === selectedMonth;
-  });
+  const itemMatchesCompany = (itemBrand, supplierName, company) => {
+    if (!company || company === 'ALL') return true
+    const c = company.toLowerCase().trim()
+    const b = (itemBrand || '').toLowerCase().trim()
+    const s = (supplierName || '').toLowerCase().trim()
+    return b.includes(c) || c.includes(b) || s.includes(c) || c.includes(s)
+  }
 
-  // Calculate overall tax totals for currently filtered list
-  let taxableTotal = 0;
-  let gstTotal = 0;
-  let cgstTotal = 0;
-  let sgstTotal = 0;
-  let igstTotal = 0;
-  let grandTotal = 0;
+  // Current & Last month string formats
+  const today = new Date()
+  const thisMonthStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0')
+  const lmYear = today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear()
+  const lmMonth = today.getMonth() === 0 ? 12 : today.getMonth()
+  const lastMonthStr = lmYear + '-' + String(lmMonth).padStart(2, '0')
+
+  // Filter invoices list by Month and Company
+  const filteredInvoices = useMemo(() => {
+    return invoices.filter(inv => {
+      if (selectedMonth !== 'ALL') {
+        const invMonth = inv.date ? inv.date.substring(0, 7) : ''
+        if (selectedMonth === 'THIS_MONTH' && invMonth !== thisMonthStr) return false
+        if (selectedMonth === 'LAST_MONTH' && invMonth !== lastMonthStr) return false
+        if (selectedMonth !== 'THIS_MONTH' && selectedMonth !== 'LAST_MONTH' && invMonth !== selectedMonth) return false
+      }
+      if (selectedCompany !== 'ALL') {
+        const matchesSupplier = (inv.supplier_name || '').toLowerCase().includes(selectedCompany.toLowerCase())
+          || selectedCompany.toLowerCase().includes((inv.supplier_name || '').toLowerCase())
+        const matchesItems = (inv.items || []).some(it => (it.brand || '').toLowerCase().includes(selectedCompany.toLowerCase()) || selectedCompany.toLowerCase().includes((it.brand || '').toLowerCase()))
+        if (!matchesSupplier && !matchesItems) return false
+      }
+      return true
+    })
+  }, [invoices, selectedMonth, selectedCompany, thisMonthStr, lastMonthStr])
+
+  // Flattened list of all purchased products across filtered invoices
+  const purchasedProducts = useMemo(() => {
+    const list = []
+    filteredInvoices.forEach(inv => {
+      const taxRate = parseFloat(inv.tax_percent) || 18
+      const sGSTIN = String(inv.supplier_gstin || '').trim()
+      const bGSTIN = String(inv.buyer_gstin || '').trim()
+      const isInterState = sGSTIN && bGSTIN && sGSTIN.substring(0, 2) !== bGSTIN.substring(0, 2)
+
+      ;(inv.items || []).forEach((it, idx) => {
+        const itemCompany = it.brand?.trim() || inv.supplier_name?.trim() || 'General'
+        if (selectedCompany !== 'ALL' && !itemMatchesCompany(it.brand, inv.supplier_name, selectedCompany)) {
+          return
+        }
+
+        const qty = parseInt(it.quantity) || 0
+        const rate = parseFloat(it.rate) || 0
+        const taxable = parseFloat(it.amount) || (qty * rate)
+        const gst = taxable * (taxRate / 100)
+        const total = taxable + gst
+
+        list.push({
+          key: `${inv.invoice_no}_${idx}`,
+          invoice_no: inv.invoice_no,
+          invoice_date: inv.date,
+          supplier_name: inv.supplier_name,
+          supplier_gstin: inv.supplier_gstin,
+          buyer_name: inv.buyer_name,
+          buyer_gstin: inv.buyer_gstin,
+          product_name: it.product_name,
+          company: itemCompany,
+          brand: it.brand || inv.supplier_name,
+          size: it.size || 'N/A',
+          finish: it.finish || 'Matte',
+          hsn_code: it.hsn_code || '69072300',
+          tax_percent: taxRate,
+          quantity: qty,
+          rate: rate,
+          taxable_amount: taxable,
+          cgst_amount: isInterState ? 0 : gst / 2,
+          sgst_amount: isInterState ? 0 : gst / 2,
+          igst_amount: isInterState ? gst : 0,
+          gst_amount: gst,
+          total_amount: total,
+          stock_status: inv.stock_status || 'pending',
+          selectedId: it.selectedId
+        })
+      })
+    })
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      return list.filter(p => 
+        p.product_name.toLowerCase().includes(q) ||
+        p.company.toLowerCase().includes(q) ||
+        p.hsn_code.toLowerCase().includes(q) ||
+        p.size.toLowerCase().includes(q) ||
+        p.invoice_no.toLowerCase().includes(q)
+      )
+    }
+
+    return list
+  }, [filteredInvoices, selectedCompany, searchQuery])
+
+  // HSN-wise GST Segregation Summary
+  const hsnSummary = useMemo(() => {
+    const map = {}
+    filteredInvoices.forEach(inv => {
+      const taxRate = parseFloat(inv.tax_percent) || 18
+      const sGSTIN = String(inv.supplier_gstin || '').trim()
+      const bGSTIN = String(inv.buyer_gstin || '').trim()
+      const isInterState = sGSTIN && bGSTIN && sGSTIN.substring(0, 2) !== bGSTIN.substring(0, 2)
+
+      ;(inv.items || []).forEach(it => {
+        if (selectedCompany !== 'ALL' && !itemMatchesCompany(it.brand, inv.supplier_name, selectedCompany)) {
+          return
+        }
+
+        const code = (it.hsn_code || '69072300').trim()
+        const comp = it.brand?.trim() || inv.supplier_name?.trim() || 'General'
+        const qty = parseInt(it.quantity) || 0
+        const rate = parseFloat(it.rate) || 0
+        const taxable = parseFloat(it.amount) || (qty * rate)
+        const gst = taxable * (taxRate / 100)
+        const total = taxable + gst
+
+        if (!map[code]) {
+          let desc = 'Ceramic / Vitrified Floor & Wall Tiles'
+          if (code.startsWith('6910')) desc = 'Ceramic Sinks, Wash Basins & Sanitaryware'
+          else if (code.startsWith('3214')) desc = 'Tile Adhesives, Grouts, Sealants & Mastic'
+          else if (code.startsWith('6802')) desc = 'Granite, Marble & Natural Stone Slabs'
+          else if (code.startsWith('2523')) desc = 'Cement & Building Admixtures'
+          else if (code.startsWith('6907')) desc = 'Vitrified / Glazed Floor & Wall Tiles'
+
+          map[code] = {
+            hsn_code: code,
+            description: desc,
+            companies: new Set(),
+            tax_percent: taxRate,
+            total_qty: 0,
+            taxable_amount: 0,
+            cgst_amount: 0,
+            sgst_amount: 0,
+            igst_amount: 0,
+            gst_amount: 0,
+            total_amount: 0,
+            items_count: 0
+          }
+        }
+
+        map[code].companies.add(comp)
+        map[code].total_qty += qty
+        map[code].taxable_amount += taxable
+        map[code].gst_amount += gst
+        map[code].total_amount += total
+        map[code].items_count += 1
+
+        if (isInterState) {
+          map[code].igst_amount += gst
+        } else {
+          map[code].cgst_amount += gst / 2
+          map[code].sgst_amount += gst / 2
+        }
+      })
+    })
+
+    return Object.values(map).map(entry => ({
+      ...entry,
+      companies_list: Array.from(entry.companies).join(', ')
+    })).sort((a, b) => b.taxable_amount - a.taxable_amount)
+  }, [filteredInvoices, selectedCompany])
+
+  // Overall Totals
+  let taxableTotal = 0
+  let gstTotal = 0
+  let cgstTotal = 0
+  let sgstTotal = 0
+  let igstTotal = 0
+  let grandTotal = 0
+  let totalBoxes = 0
 
   filteredInvoices.forEach(inv => {
-    const gross = parseFloat(inv.gross_amount || 0);
-    const gst = parseFloat(inv.gst_amount || 0);
-    const total = parseFloat(inv.total_amount || 0);
+    const gross = parseFloat(inv.gross_amount || 0)
+    const gst = parseFloat(inv.gst_amount || 0)
+    const total = parseFloat(inv.total_amount || 0)
+    const qty = parseInt(inv.total_qty || 0)
 
-    taxableTotal += gross;
-    gstTotal += gst;
-    grandTotal += total;
+    taxableTotal += gross
+    gstTotal += gst
+    grandTotal += total
+    totalBoxes += qty
 
-    const sGSTIN = String(inv.supplier_gstin || '').trim();
-    const bGSTIN = String(inv.buyer_gstin || '').trim();
+    const sGSTIN = String(inv.supplier_gstin || '').trim()
+    const bGSTIN = String(inv.buyer_gstin || '').trim()
     if (sGSTIN && bGSTIN && sGSTIN.substring(0, 2) === bGSTIN.substring(0, 2)) {
-      cgstTotal += gst / 2;
-      sgstTotal += gst / 2;
+      cgstTotal += gst / 2
+      sgstTotal += gst / 2
     } else if (sGSTIN && bGSTIN) {
-      igstTotal += gst;
+      igstTotal += gst
     } else {
-      cgstTotal += gst / 2;
-      sgstTotal += gst / 2;
+      cgstTotal += gst / 2
+      sgstTotal += gst / 2
     }
-  });
+  })
 
   const getMonthName = (mStr) => {
-    if (mStr === 'ALL') return 'All Time';
-    if (mStr === 'THIS_MONTH') return 'This Month (' + formatMonthLabel(thisMonthStr) + ')';
-    if (mStr === 'LAST_MONTH') return 'Last Month (' + formatMonthLabel(lastMonthStr) + ')';
-    return formatMonthLabel(mStr);
-  };
+    if (mStr === 'ALL') return 'All Time'
+    if (mStr === 'THIS_MONTH') return 'This Month (' + formatMonthLabel(thisMonthStr) + ')'
+    if (mStr === 'LAST_MONTH') return 'Last Month (' + formatMonthLabel(lastMonthStr) + ')'
+    return formatMonthLabel(mStr)
+  }
 
   const formatMonthLabel = (mStr) => {
-    if (!mStr) return '';
-    const [yr, mn] = mStr.split('-');
-    const d = new Date(parseInt(yr), parseInt(mn) - 1, 1);
-    return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  };
+    if (!mStr) return ''
+    const [yr, mn] = mStr.split('-')
+    const d = new Date(parseInt(yr), parseInt(mn) - 1, 1)
+    return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  }
 
   const exportToAuditorCSV = () => {
     if (filteredInvoices.length === 0) {
-      alert('No invoices to export for the selected filter.');
-      return;
+      alert('No invoices to export for the selected filter.')
+      return
     }
     
     const headers = [
@@ -1592,28 +1785,28 @@ export function PurchasePage() {
       "SGST",
       "IGST",
       "Total Invoice Value"
-    ];
+    ]
 
     const rows = filteredInvoices.map((inv, idx) => {
-      const gross = parseFloat(inv.gross_amount || 0);
-      const gst = parseFloat(inv.gst_amount || 0);
-      const total = parseFloat(inv.total_amount || 0);
-      const rate = parseFloat(inv.tax_percent || 0);
+      const gross = parseFloat(inv.gross_amount || 0)
+      const gst = parseFloat(inv.gst_amount || 0)
+      const total = parseFloat(inv.total_amount || 0)
+      const rate = parseFloat(inv.tax_percent || 0)
 
-      let cgst = 0;
-      let sgst = 0;
-      let igst = 0;
+      let cgst = 0
+      let sgst = 0
+      let igst = 0
 
-      const sGSTIN = String(inv.supplier_gstin || '').trim();
-      const bGSTIN = String(inv.buyer_gstin || '').trim();
+      const sGSTIN = String(inv.supplier_gstin || '').trim()
+      const bGSTIN = String(inv.buyer_gstin || '').trim()
       if (sGSTIN && bGSTIN && sGSTIN.substring(0, 2) === bGSTIN.substring(0, 2)) {
-        cgst = gst / 2;
-        sgst = gst / 2;
+        cgst = gst / 2
+        sgst = gst / 2
       } else if (sGSTIN && bGSTIN) {
-        igst = gst;
+        igst = gst
       } else {
-        cgst = gst / 2;
-        sgst = gst / 2;
+        cgst = gst / 2
+        sgst = gst / 2
       }
 
       return [
@@ -1628,8 +1821,8 @@ export function PurchasePage() {
         sgst.toFixed(2),
         igst.toFixed(2),
         total.toFixed(2)
-      ];
-    });
+      ]
+    })
 
     const totalRow = [
       "TOTAL",
@@ -1643,25 +1836,152 @@ export function PurchasePage() {
       sgstTotal.toFixed(2),
       igstTotal.toFixed(2),
       grandTotal.toFixed(2)
-    ];
-    rows.push(totalRow);
+    ]
+    rows.push(totalRow)
 
     const csvContent = "data:text/csv;charset=utf-8," 
-      + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+      + [headers.join(","), ...rows.map(e => e.join(","))].join("\n")
     
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement("a")
+    link.setAttribute("href", encodedUri)
     
     const monthLabel = selectedMonth === 'ALL' ? 'all' 
                      : selectedMonth === 'THIS_MONTH' ? 'this-month'
                      : selectedMonth === 'LAST_MONTH' ? 'last-month'
-                     : selectedMonth;
-    link.setAttribute("download", `gst_purchase_report_${monthLabel}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+                     : selectedMonth
+    link.setAttribute("download", `gst_purchase_report_${monthLabel}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  // Export HSN-wise GST CSV report
+  const exportToHsnCSV = () => {
+    if (hsnSummary.length === 0) {
+      alert('No HSN data available for the selected period / company filter.')
+      return
+    }
+
+    const headers = [
+      "S.No",
+      "HSN Code",
+      "Goods Classification",
+      "Companies / Brands",
+      "Total Quantity (Boxes)",
+      "Taxable Value (Gross ₹)",
+      "GST Rate (%)",
+      "CGST (₹)",
+      "SGST (₹)",
+      "IGST (₹)",
+      "Total GST (₹)",
+      "Total Purchase Value (₹)"
+    ]
+
+    let sumQty = 0, sumTaxable = 0, sumCgst = 0, sumSgst = 0, sumIgst = 0, sumGst = 0, sumTotal = 0
+
+    const rows = hsnSummary.map((h, idx) => {
+      sumQty += h.total_qty
+      sumTaxable += h.taxable_amount
+      sumCgst += h.cgst_amount
+      sumSgst += h.sgst_amount
+      sumIgst += h.igst_amount
+      sumGst += h.gst_amount
+      sumTotal += h.total_amount
+
+      return [
+        idx + 1,
+        `"${h.hsn_code}"`,
+        `"${h.description}"`,
+        `"${h.companies_list}"`,
+        h.total_qty,
+        h.taxable_amount.toFixed(2),
+        h.tax_percent,
+        h.cgst_amount.toFixed(2),
+        h.sgst_amount.toFixed(2),
+        h.igst_amount.toFixed(2),
+        h.gst_amount.toFixed(2),
+        h.total_amount.toFixed(2)
+      ]
+    })
+
+    rows.push([
+      "TOTAL",
+      "",
+      "",
+      "",
+      sumQty,
+      sumTaxable.toFixed(2),
+      "",
+      sumCgst.toFixed(2),
+      sumSgst.toFixed(2),
+      sumIgst.toFixed(2),
+      sumGst.toFixed(2),
+      sumTotal.toFixed(2)
+    ])
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n")
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement("a")
+    link.setAttribute("href", encodedUri)
+    const companyTag = selectedCompany === 'ALL' ? 'all-companies' : selectedCompany.toLowerCase().replace(/\s+/g, '-')
+    link.setAttribute("download", `gst_hsn_purchase_report_${selectedMonth}_${companyTag}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  // Export Company Products CSV
+  const exportCompanyProductsCSV = () => {
+    if (purchasedProducts.length === 0) {
+      alert('No products to export.')
+      return
+    }
+
+    const headers = [
+      "S.No",
+      "Product Name",
+      "Company / Brand",
+      "Size",
+      "HSN Code",
+      "GST Rate (%)",
+      "Quantity (Boxes)",
+      "Purchase Rate (₹)",
+      "Taxable Amount (₹)",
+      "GST Amount (₹)",
+      "Total Amount (₹)",
+      "Invoice No",
+      "Invoice Date",
+      "Stock Status"
+    ]
+
+    const rows = purchasedProducts.map((p, idx) => [
+      idx + 1,
+      `"${p.product_name}"`,
+      `"${p.company}"`,
+      `"${p.size}"`,
+      `"${p.hsn_code}"`,
+      p.tax_percent,
+      p.quantity,
+      p.rate.toFixed(2),
+      p.taxable_amount.toFixed(2),
+      p.gst_amount.toFixed(2),
+      p.total_amount.toFixed(2),
+      `"${p.invoice_no}"`,
+      p.invoice_date,
+      p.stock_status
+    ])
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n")
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement("a")
+    link.setAttribute("href", encodedUri)
+    const companyTag = selectedCompany === 'ALL' ? 'all-companies' : selectedCompany.toLowerCase().replace(/\s+/g, '-')
+    link.setAttribute("download", `bought_products_${companyTag}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 
   const handleDeleteInvoice = async (invoiceNo) => {
     if (!window.confirm(`Are you sure you want to delete invoice #${invoiceNo}? This action cannot be undone.`)) {
@@ -1689,203 +2009,539 @@ export function PurchasePage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            Purchase Invoices <Receipt className="h-5 w-5 text-blue-500" />
+            Purchase & Stock Inward <Receipt className="h-5 w-5 text-blue-500" />
           </h1>
-          <p className="text-sm text-slate-500">Scan incoming supplier invoices and view import history</p>
+          <p className="text-sm text-slate-500">Scan incoming purchase invoices, track HSN/GST tax, and manage company-wise stock inward</p>
         </div>
-        <button
-          onClick={() => setImportOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
-        >
-          <UploadCloud className="h-4 w-4" /> Import Invoice
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
+          >
+            <UploadCloud className="h-4 w-4" /> Import Invoice (AI Scan)
+          </button>
+        </div>
       </div>
 
-      {/* Filters and Auditor Summary Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* Month Selector Column */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col justify-between shadow-xs">
-          <div>
-            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Filter Invoices by Period</label>
-            <div className="mt-2 flex flex-col gap-2">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSelectedMonth('ALL')}
-                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${selectedMonth === 'ALL' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-                >
-                  All Invoices
-                </button>
-                <button
-                  onClick={() => setSelectedMonth('THIS_MONTH')}
-                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${selectedMonth === 'THIS_MONTH' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-                >
-                  This Month
-                </button>
-                <button
-                  onClick={() => setSelectedMonth('LAST_MONTH')}
-                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${selectedMonth === 'LAST_MONTH' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-                >
-                  Last Month
-                </button>
+      {/* Tabs Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-2">
+        <div className="flex p-1 bg-slate-100 rounded-xl gap-1">
+          <button
+            onClick={() => setActiveTab('invoices')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'invoices' 
+                ? 'bg-white text-blue-600 shadow-xs' 
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileText className="h-4 w-4" /> Purchase Bills ({filteredInvoices.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('company_products')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'company_products' 
+                ? 'bg-white text-blue-600 shadow-xs' 
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Boxes className="h-4 w-4" /> Bought Products ({purchasedProducts.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('hsn_summary')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'hsn_summary' 
+                ? 'bg-white text-blue-600 shadow-xs' 
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <PieChart className="h-4 w-4" /> HSN & GST Segregation ({hsnSummary.length} HSN)
+          </button>
+        </div>
+
+        {/* Global Filters: Month & Company */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Company Filter Dropdown */}
+          <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2.5 py-1 shadow-2xs">
+            <Building2 className="h-3.5 w-3.5 text-slate-400" />
+            <select
+              value={selectedCompany}
+              onChange={e => setSelectedCompany(e.target.value)}
+              className="text-xs font-semibold text-slate-700 bg-transparent outline-none cursor-pointer"
+            >
+              <option value="ALL">All Companies / Suppliers</option>
+              {uniqueCompanies.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Month Filter Dropdown */}
+          <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2.5 py-1 shadow-2xs">
+            <Calendar className="h-3.5 w-3.5 text-slate-400" />
+            <select
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              className="text-xs font-semibold text-slate-700 bg-transparent outline-none cursor-pointer"
+            >
+              <option value="ALL">All Periods</option>
+              <option value="THIS_MONTH">This Month</option>
+              <option value="LAST_MONTH">Last Month</option>
+              {uniqueMonths.map(m => (
+                <option key={m} value={m}>{formatMonthLabel(m)}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Overview Metric Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Invoices / Boxes</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-xl font-extrabold text-slate-800">{filteredInvoices.length}</span>
+            <span className="text-xs text-slate-500 font-semibold">bills · {totalBoxes} boxes</span>
+          </div>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Taxable Gross Value</span>
+          <div className="mt-1 text-xl font-extrabold text-slate-800 font-mono">
+            ₹{taxableTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
+          <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block">GST Tax Credit (ITC)</span>
+          <div className="mt-1 text-xl font-extrabold text-blue-600 font-mono">
+            ₹{gstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
+          <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Total Bill Value</span>
+          <div className="mt-1 text-xl font-extrabold text-emerald-600 font-mono">
+            ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+      </div>
+
+      {/* TAB 1: INVOICES HISTORY */}
+      {activeTab === 'invoices' && (
+        <div className="space-y-4">
+          {/* GST Summary & Auditor Box */}
+          <div className="bg-slate-900 text-white rounded-xl p-4 flex flex-col justify-between shadow-sm relative overflow-hidden">
+            <div className="absolute right-0 bottom-0 opacity-10 font-mono text-7xl font-bold select-none pointer-events-none">GST</div>
+            <div>
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                  GST Purchase Summary — {getMonthName(selectedMonth)} {selectedCompany !== 'ALL' ? `(${selectedCompany})` : ''}
+                </span>
+                <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30">
+                  GSTR-2 Ready
+                </span>
               </div>
               
-              {uniqueMonths.length > 0 && (
-                <select
-                  value={uniqueMonths.includes(selectedMonth) ? selectedMonth : 'ALL'}
-                  onChange={e => {
-                    if (e.target.value !== 'ALL') {
-                      setSelectedMonth(e.target.value)
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400"
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-4">
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-slate-400 font-medium">Taxable Gross</span>
+                  <p className="text-sm font-extrabold text-slate-100 font-mono">₹{taxableTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-slate-400 font-medium">CGST (Central)</span>
+                  <p className="text-sm font-extrabold text-slate-100 font-mono">₹{cgstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-slate-400 font-medium">SGST (State)</span>
+                  <p className="text-sm font-extrabold text-slate-100 font-mono">₹{sgstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-slate-400 font-medium">IGST (Interstate)</span>
+                  <p className="text-sm font-extrabold text-slate-100 font-mono">₹{igstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-blue-400 font-bold">Total GST Input</span>
+                  <p className="text-sm font-extrabold text-blue-400 font-mono">₹{gstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-slate-400 font-medium">Grand Total Payable:</span>
+                <strong className="text-sm font-extrabold text-blue-400 font-mono">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              </div>
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={exportToAuditorCSV}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-1.5 text-xs font-bold text-slate-200 border border-slate-700 transition-colors shadow-sm cursor-pointer"
+                  title="Download CSV report for GST filing"
                 >
-                  <option value="ALL">Choose Month...</option>
-                  {uniqueMonths.map(m => (
-                    <option key={m} value={m}>{formatMonthLabel(m)}</option>
+                  <Download className="h-3.5 w-3.5" /> Export Bills CSV
+                </button>
+                <button
+                  onClick={() => setAuditorModalOpen(true)}
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-3.5 py-1.5 text-xs font-bold text-white transition-colors shadow-sm cursor-pointer"
+                  title="Send detailed figures directly to auditor"
+                >
+                  <Send className="h-3.5 w-3.5" /> Send to Auditor
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Invoices Table */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            {loading ? (
+              <div className="py-20 text-center text-slate-400 text-sm font-medium">Loading invoices history...</div>
+            ) : filteredInvoices.length === 0 ? (
+              <div className="py-20 text-center text-slate-400 text-sm font-medium">
+                No invoices found for the selected period / company filter.
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    {['Invoice No','Invoice Date','Supplier Company','GSTIN','Total Boxes','Net Total Bill','Stock Update',''].map(h => (
+                      <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {filteredInvoices.map((inv, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-3.5 font-bold text-slate-800">{inv.invoice_no}</td>
+                      <td className="px-5 py-3.5 text-slate-600 font-semibold">{fmtDate(inv.date)}</td>
+                      <td className="px-5 py-3.5 text-slate-800 font-bold">
+                        <span>{inv.supplier_name}</span>
+                        {inv.items && inv.items[0]?.brand && (
+                          <span className="ml-2 inline-block rounded bg-slate-100 text-slate-600 px-1.5 py-0.5 text-[10px] font-semibold">
+                            {inv.items[0].brand}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{inv.supplier_gstin || 'N/A'}</td>
+                      <td className="px-5 py-3.5 font-bold text-slate-700">{inv.total_qty} boxes</td>
+                      <td className="px-5 py-3.5 font-bold text-blue-600">
+                        ₹{parseFloat(inv.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {inv.stock_status === 'updated' ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-100">
+                            <Check className="h-3 w-3 stroke-[3]" /> Approved
+                          </span>
+                        ) : inv.stock_status === 'skipped' ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 border border-slate-200">
+                            <X className="h-3 w-3" /> Skipped
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setApproveInvoice(inv)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-700 border border-blue-200 transition-all cursor-pointer shadow-xs hover:shadow-sm"
+                          >
+                            <Check className="h-3.5 w-3.5" /> Approve Stock
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => setSelectedInvoice(inv)}
+                            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer shadow-xs transition-all"
+                          >
+                            <Eye className="h-3.5 w-3.5 text-slate-400" /> View Details
+                          </button>
+                          <button
+                            onClick={() => handleDeleteInvoice(inv.invoice_no)}
+                            className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 text-xs font-bold text-rose-700 cursor-pointer shadow-xs transition-all"
+                            title="Delete Invoice"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-rose-500" /> Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
                   ))}
-                </select>
-              )}
-            </div>
-          </div>
-          
-          <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400 font-medium">
-            Showing <strong className="text-slate-700">{filteredInvoices.length}</strong> of {invoices.length} imported purchase bills
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
+      )}
 
-        {/* GST Tax Summary Box */}
-        <div className="md:col-span-2 bg-slate-900 text-white rounded-xl p-4 flex flex-col justify-between shadow-sm relative overflow-hidden">
-          {/* Subtle grid background decoration */}
-          <div className="absolute right-0 bottom-0 opacity-10 font-mono text-7xl font-bold select-none pointer-events-none">GST</div>
-          
-          <div>
-            <div className="flex justify-between items-center">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">GST Report Summary — {getMonthName(selectedMonth)}</span>
-              <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30">Tax Details</span>
-            </div>
-            
-            <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-4">
-              <div className="space-y-0.5">
-                <span className="text-[10px] text-slate-400 font-medium">Taxable Gross</span>
-                <p className="text-sm font-extrabold text-slate-100 font-mono">₹{taxableTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-              </div>
-              <div className="space-y-0.5">
-                <span className="text-[10px] text-slate-400 font-medium">CGST (Central)</span>
-                <p className="text-sm font-extrabold text-slate-100 font-mono">₹{cgstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-              </div>
-              <div className="space-y-0.5">
-                <span className="text-[10px] text-slate-400 font-medium">SGST (State)</span>
-                <p className="text-sm font-extrabold text-slate-100 font-mono">₹{sgstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-              </div>
-              <div className="space-y-0.5">
-                <span className="text-[10px] text-slate-400 font-medium">IGST (Interstate)</span>
-                <p className="text-sm font-extrabold text-slate-100 font-mono">₹{igstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-              </div>
-              <div className="space-y-0.5">
-                <span className="text-[10px] text-blue-400 font-bold">Total GST</span>
-                <p className="text-sm font-extrabold text-blue-400 font-mono">₹{(cgstTotal + sgstTotal + igstTotal).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-slate-400 font-medium">Total Bill value:</span>
-              <strong className="text-sm font-extrabold text-blue-400 font-mono">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-            </div>
-            
-            <div className="flex gap-2">
+      {/* TAB 2: BOUGHT PRODUCTS (COMPANY WISE FILTER) */}
+      {activeTab === 'company_products' && (
+        <div className="space-y-4">
+          {/* Company Pills & Search Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+            {/* Company Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wide mr-1 flex items-center gap-1">
+                <Building2 className="h-3.5 w-3.5" /> Company:
+              </span>
               <button
-                onClick={exportToAuditorCSV}
-                className="flex items-center gap-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-1.5 text-xs font-bold text-slate-200 border border-slate-700 transition-colors shadow-sm cursor-pointer"
-                title="Download CSV report for GST filing"
+                onClick={() => setSelectedCompany('ALL')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  selectedCompany === 'ALL'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
               >
-                <Download className="h-3.5 w-3.5" /> Export CSV
+                All Companies
               </button>
-              <button
-                onClick={() => setAuditorModalOpen(true)}
-                className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-3.5 py-1.5 text-xs font-bold text-white transition-colors shadow-sm cursor-pointer"
-                title="Send detailed figures directly to auditor"
-              >
-                <Send className="h-3.5 w-3.5" /> Send to Auditor
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="py-20 text-center text-slate-400 text-sm font-medium">Loading invoices history...</div>
-        ) : filteredInvoices.length === 0 ? (
-          <div className="py-20 text-center text-slate-400 text-sm font-medium">
-            No invoices found for the selected month.
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                {['Invoice No','Invoice Date','Supplier Company','GSTIN','Total Boxes','Net Total Bill','Stock Update',''].map(h => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {filteredInvoices.map((inv, idx) => (
-                <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3.5 font-bold text-slate-800">{inv.invoice_no}</td>
-                  <td className="px-5 py-3.5 text-slate-600 font-semibold">{fmtDate(inv.date)}</td>
-                  <td className="px-5 py-3.5 text-slate-800 font-bold">{inv.supplier_name}</td>
-                  <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{inv.supplier_gstin || 'N/A'}</td>
-                  <td className="px-5 py-3.5 font-bold text-slate-700">{inv.total_qty} boxes</td>
-                  <td className="px-5 py-3.5 font-bold text-blue-600">
-                    ₹{parseFloat(inv.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    {inv.stock_status === 'updated' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-100">
-                        <Check className="h-3 w-3 stroke-[3]" /> Approved
-                      </span>
-                    ) : inv.stock_status === 'skipped' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 border border-slate-200">
-                        <X className="h-3 w-3" /> Skipped
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => setApproveInvoice(inv)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-700 border border-blue-200 transition-all cursor-pointer shadow-xs hover:shadow-sm"
-                      >
-                        <Check className="h-3.5 w-3.5" /> Approve Stock
-                      </button>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => setSelectedInvoice(inv)}
-                        className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer shadow-xs transition-all"
-                      >
-                        <Eye className="h-3.5 w-3.5 text-slate-400" /> View Details
-                      </button>
-                      <button
-                        onClick={() => handleDeleteInvoice(inv.invoice_no)}
-                        className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 text-xs font-bold text-rose-700 cursor-pointer shadow-xs transition-all"
-                        title="Delete Invoice"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-rose-500" /> Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+              {uniqueCompanies.map(c => (
+                <button
+                  key={c}
+                  onClick={() => setSelectedCompany(c)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    selectedCompany === c
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {c}
+                </button>
               ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+            </div>
 
+            {/* Search Input & Export Button */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 sm:w-64">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search product, size, HSN..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-700 outline-none focus:border-blue-400 bg-slate-50 focus:bg-white"
+                />
+              </div>
+              <button
+                onClick={exportCompanyProductsCSV}
+                className="flex items-center gap-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-1.5 text-xs font-bold text-white transition-colors cursor-pointer shadow-xs whitespace-nowrap"
+              >
+                <Download className="h-3.5 w-3.5" /> Export Products
+              </button>
+            </div>
+          </div>
+
+          {/* Products Table */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            {purchasedProducts.length === 0 ? (
+              <div className="py-20 text-center text-slate-400 text-sm font-medium">
+                No purchased products match the current company / search filter.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-left">
+                    <tr>
+                      <th className="px-4 py-3">Product Description</th>
+                      <th className="px-3 py-3">Company / Brand</th>
+                      <th className="px-3 py-3">Size / Finish</th>
+                      <th className="px-3 py-3">HSN Code</th>
+                      <th className="px-3 py-3 text-right">Qty (Boxes)</th>
+                      <th className="px-3 py-3 text-right">Buy Rate (₹)</th>
+                      <th className="px-3 py-3 text-right">Taxable (₹)</th>
+                      <th className="px-3 py-3 text-right">GST % (₹)</th>
+                      <th className="px-3 py-3 text-right">Total Cost (₹)</th>
+                      <th className="px-4 py-3">Invoice & Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {purchasedProducts.map((p) => (
+                      <tr key={p.key} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="font-bold text-slate-800 block text-xs">{p.product_name}</span>
+                          <span className="text-[10px] text-slate-400">Supplier: {p.supplier_name}</span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 border border-purple-200 text-purple-700 px-2 py-0.5 text-[10px] font-bold">
+                            <Building2 className="h-3 w-3" /> {p.company}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-slate-600">
+                          <span className="font-semibold block">{p.size}</span>
+                          <span className="text-[10px] text-slate-400">{p.finish}</span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className="font-mono bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold">
+                            {p.hsn_code}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-right font-bold text-slate-800">
+                          {p.quantity}
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-slate-700">
+                          ₹{p.rate.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-slate-800 font-semibold">
+                          ₹{p.taxable_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-slate-600">
+                          <span className="text-slate-500 font-medium">{p.tax_percent}%</span>
+                          <span className="block text-[10px] text-blue-600 font-bold">
+                            +₹{p.gst_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono font-bold text-emerald-600">
+                          ₹{p.total_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-bold text-slate-700 block text-[11px]">{p.invoice_no}</span>
+                          <span className="text-[10px] text-slate-400 block">{fmtDate(p.invoice_date)}</span>
+                          {p.stock_status === 'updated' ? (
+                            <span className="inline-block mt-0.5 text-[9px] font-extrabold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100">
+                              ✓ IN STOCK
+                            </span>
+                          ) : (
+                            <span className="inline-block mt-0.5 text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-100">
+                              PENDING APPROVAL
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: HSN & GST TAX BREAKDOWN */}
+      {activeTab === 'hsn_summary' && (
+        <div className="space-y-4">
+          {/* Action Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                <PieChart className="h-4 w-4 text-blue-600" />
+                HSN-wise GST Input Tax Credit (ITC) Report
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Purchase tax segregated strictly by product HSN Code, GST Tax Rates, and CGST/SGST/IGST breakdown
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={exportToHsnCSV}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 text-xs font-bold text-white transition-colors cursor-pointer shadow-sm"
+              >
+                <Download className="h-3.5 w-3.5" /> Export HSN Report (GSTR-2)
+              </button>
+            </div>
+          </div>
+
+          {/* HSN Table */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            {hsnSummary.length === 0 ? (
+              <div className="py-20 text-center text-slate-400 text-sm font-medium">
+                No HSN data found for the selected period / company filter.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-900 text-white font-bold text-left uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th className="px-4 py-3">HSN Code</th>
+                      <th className="px-4 py-3">Goods Description</th>
+                      <th className="px-3 py-3">Companies</th>
+                      <th className="px-3 py-3 text-right">Total Qty</th>
+                      <th className="px-3 py-3 text-right">Taxable Gross (₹)</th>
+                      <th className="px-2 py-3 text-center">GST Rate</th>
+                      <th className="px-3 py-3 text-right">CGST (₹)</th>
+                      <th className="px-3 py-3 text-right">SGST (₹)</th>
+                      <th className="px-3 py-3 text-right">IGST (₹)</th>
+                      <th className="px-3 py-3 text-right">Total GST (₹)</th>
+                      <th className="px-4 py-3 text-right">Total Value (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {hsnSummary.map((h, idx) => (
+                      <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                        <td className="px-4 py-3.5 font-mono font-bold text-blue-700 text-sm">
+                          {h.hsn_code}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <span className="font-bold text-slate-800 block text-xs">{h.description}</span>
+                          <span className="text-[10px] text-slate-400">{h.items_count} distinct line items</span>
+                        </td>
+                        <td className="px-3 py-3.5">
+                          <span className="inline-block bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold max-w-[150px] truncate" title={h.companies_list}>
+                            {h.companies_list}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3.5 text-right font-bold text-slate-800 text-xs font-mono">
+                          {h.total_qty} boxes
+                        </td>
+                        <td className="px-3 py-3.5 text-right font-mono font-bold text-slate-800">
+                          ₹{h.taxable_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-2 py-3.5 text-center">
+                          <span className="inline-block bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-bold text-[11px]">
+                            {h.tax_percent}%
+                          </span>
+                        </td>
+                        <td className="px-3 py-3.5 text-right font-mono text-slate-600">
+                          ₹{h.cgst_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-3 py-3.5 text-right font-mono text-slate-600">
+                          ₹{h.sgst_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-3 py-3.5 text-right font-mono text-slate-600">
+                          ₹{h.igst_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-3 py-3.5 text-right font-mono font-extrabold text-blue-600">
+                          ₹{h.gst_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3.5 text-right font-mono font-extrabold text-emerald-600 text-sm">
+                          ₹{h.total_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {/* Totals Row */}
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-extrabold text-slate-900 text-xs">
+                    <tr>
+                      <td className="px-4 py-3 font-bold uppercase tracking-wider" colSpan={3}>
+                        TOTALS ({hsnSummary.length} HSN CODES)
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono text-xs">
+                        {hsnSummary.reduce((acc, h) => acc + h.total_qty, 0)} boxes
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono">
+                        ₹{taxableTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-2 py-3 text-center">-</td>
+                      <td className="px-3 py-3 text-right font-mono">
+                        ₹{cgstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono">
+                        ₹{sgstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono">
+                        ₹{igstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono text-blue-600">
+                        ₹{gstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-emerald-600 text-sm">
+                        ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
       <InvoiceImportModal
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}
@@ -1906,8 +2562,8 @@ export function PurchasePage() {
         invoice={approveInvoice}
         onClose={() => setApproveInvoice(null)}
         onRefresh={() => {
-          fetchProducts();
-          fetchInvoices();
+          fetchProducts()
+          fetchInvoices()
         }}
         products={products}
       />
@@ -1922,6 +2578,7 @@ export function PurchasePage() {
         sgstTotal={sgstTotal}
         igstTotal={igstTotal}
         grandTotal={grandTotal}
+        hsnSummary={hsnSummary}
       />
     </div>
   )
