@@ -9,6 +9,33 @@ const jsonResponse = (data, status = 200) => {
   })
 }
 
+function cleanNumber(val) {
+  if (val === undefined || val === null) return 0
+  if (typeof val === 'number') return val
+  const cleaned = String(val).replace(/[^\d.]/g, '')
+  return parseFloat(cleaned) || 0
+}
+
+function cleanDate(val) {
+  if (!val) return ''
+  const str = String(val).trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str
+  const dmyMatch = str.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/)
+  if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`
+  const ymdMatch = str.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/)
+  if (ymdMatch) return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`
+  try {
+    const d = new Date(str)
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const dateVal = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${dateVal}`
+    }
+  } catch {}
+  return str
+}
+
 // ─── MAPPERS ─────────────────────────────────────────────────────────────────
 const mapStaffFromSupabase = (s) => ({
   id: s.id,
@@ -1003,13 +1030,13 @@ function getQuotationSqft(cat, customMap = {}) {
       }
 
       let parsedHeaders = {}
-      if (init.headers) {
-        if (typeof init.headers.forEach === 'function') {
-          init.headers.forEach((val, key) => {
+      if (options.headers) {
+        if (typeof options.headers.forEach === 'function') {
+          options.headers.forEach((val, key) => {
             parsedHeaders[key.toLowerCase()] = val
           })
         } else {
-          parsedHeaders = { ...init.headers }
+          parsedHeaders = { ...options.headers }
         }
       }
 
@@ -1032,6 +1059,278 @@ function getQuotationSqft(cat, customMap = {}) {
         error: err.message || 'Internal error in client-side AI chat adapter.',
         code: 'CLIENT_ADAPTER_ERROR'
       }, 500)
+    }
+  }
+
+  // ─── POST /api/test-mistral ────────────────────────────────────────────────
+  if (pathname === '/api/test-mistral' && method === 'POST') {
+    try {
+      const getHeader = (h) => {
+        const headers = options.headers
+        if (!headers) return ''
+        if (typeof headers.get === 'function') return headers.get(h) || ''
+        if (typeof headers.forEach === 'function') {
+          let val = ''
+          headers.forEach((v, k) => {
+            if (k.toLowerCase() === h.toLowerCase()) val = v
+          })
+          return val
+        }
+        return headers[h] || headers[h.toLowerCase()] || ''
+      }
+
+      let mistralKey = getHeader('x-mistral-key')
+      if (!mistralKey && body?.mistralKey) {
+        mistralKey = body.mistralKey
+      }
+      mistralKey = (mistralKey || localStorage.getItem('mistral_api_key') || 'mstrl_Nb4uJzQTWhO5xvm7Hg06R0MMHvAqxhcj_1jhCtG').trim()
+
+      if (!mistralKey) {
+        return jsonResponse({ success: false, error: 'No Mistral API key provided.' }, 400)
+      }
+
+      const response = await fetch('https://api.mistral.ai/v1/models', {
+        headers: { 'Authorization': `Bearer ${mistralKey}` }
+      })
+
+      if (!response.ok) {
+        const err = await response.text()
+        return jsonResponse({ success: false, error: err }, response.status)
+      }
+
+      const data = await response.json()
+      return jsonResponse({ success: true, modelsCount: data.data?.length || 0 })
+    } catch (err) {
+      return jsonResponse({ success: false, error: err.message }, 500)
+    }
+  }
+
+  // ─── POST /api/upload-invoice ──────────────────────────────────────────────
+  if (pathname === '/api/upload-invoice' && method === 'POST') {
+    try {
+      const getHeader = (h) => {
+        const headers = options.headers
+        if (!headers) return ''
+        if (typeof headers.get === 'function') return headers.get(h) || ''
+        if (typeof headers.forEach === 'function') {
+          let val = ''
+          headers.forEach((v, k) => {
+            if (k.toLowerCase() === h.toLowerCase()) val = v
+          })
+          return val
+        }
+        return headers[h] || headers[h.toLowerCase()] || ''
+      }
+
+      const prov = getHeader('x-provider') || localStorage.getItem('gemini_provider') || 'mistral'
+
+      let file = null
+      if (options.body instanceof FormData) {
+        file = options.body.get('invoice')
+      }
+      if (!file) {
+        return jsonResponse({ error: 'No invoice file uploaded.' }, 400)
+      }
+
+      // Convert File to Data URI
+      const fileDataUri = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      const base64Data = String(fileDataUri).split(',')[1]
+      const mimeType = file.type || 'image/png'
+
+      const invoiceSystemPrompt = `
+You are an expert purchase tax invoice parser. Analyze the uploaded invoice image or document.
+Identify and extract the following details and return ONLY a valid JSON object matching the requested schema.
+Do not include markdown tags, comments, or wrappers. Just return the raw JSON object.
+
+Schema:
+{
+  "invoice_no": string,
+  "date": string (format: YYYY-MM-DD),
+  "supplier_name": string (Seller company name),
+  "supplier_gstin": string (Seller GSTIN),
+  "supplier_phone": string (Seller phone),
+  "buyer_name": string (Buyer name),
+  "buyer_gstin": string (Buyer GSTIN),
+  "total_qty": number (Grand total quantity of boxes),
+  "gross_amount": number (Gross amount before tax),
+  "tax_percent": number (Overall GST rate in %),
+  "gst_amount": number (Grand total of GST taxes),
+  "total_amount": number (Grand total bill amount),
+  "total_items": number (Highest Serial Number / item count declared in the invoice table),
+  "items": [
+    {
+      "product_name": string,
+      "size": string (extract exactly what is written in the Size column of the invoice, preserving attributes like "WP", "WP MAT", "PGVT", "HG", e.g., "12X12 WP MAT", "18X12 WP", "48X24 PGVT"),
+      "finish": string,
+      "brand": string,
+      "hsn_code": string,
+      "quantity": number,
+      "rate": number,
+      "amount": number
+    }
+  ]
+}
+`
+
+      let contentText = null
+
+      if (prov === 'mistral') {
+        const mistralKey = (getHeader('x-mistral-key') || localStorage.getItem('mistral_api_key') || 'mstrl_Nb4uJzQTWhO5xvm7Hg06R0MMHvAqxhcj_1jhCtG').trim()
+        if (!mistralKey) {
+          return jsonResponse({ error: 'Mistral API Key is missing. Please configure it in settings.' }, 400)
+        }
+
+        let targetDataUri = fileDataUri
+
+        // If PDF, render first page to image via canvas with pdfjs-dist
+        if (mimeType === 'application/pdf') {
+          try {
+            let pdfjsLib = await import('pdfjs-dist')
+            if (pdfjsLib.default) pdfjsLib = pdfjsLib.default
+            if (!pdfjsLib.GlobalWorkerOptions?.workerSrc) {
+              pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+            }
+            const arrayBuffer = await file.arrayBuffer()
+            const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) })
+            const pdfDoc = await loadingTask.promise
+            const page = await pdfDoc.getPage(1)
+            const viewport = page.getViewport({ scale: 2.0 })
+            const canvas = document.createElement('canvas')
+            canvas.width = viewport.width
+            canvas.height = viewport.height
+            const ctx = canvas.getContext('2d')
+            await page.render({ canvasContext: ctx, viewport }).promise
+            targetDataUri = canvas.toDataURL('image/png')
+          } catch (pdfErr) {
+            console.warn('PDF canvas render failed, using raw data URI:', pdfErr)
+          }
+        }
+
+        // Call ministral-8b-latest Vision API
+        const visionRes = await fetch('https://api.mistral.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${mistralKey}`
+          },
+          body: JSON.stringify({
+            model: 'ministral-8b-latest',
+            messages: [
+              { role: 'system', content: invoiceSystemPrompt },
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: 'Analyze this invoice document and extract all fields according to schema.' },
+                  { type: 'image_url', image_url: targetDataUri }
+                ]
+              }
+            ],
+            max_tokens: 3000,
+            response_format: { type: 'json_object' }
+          })
+        })
+
+        if (!visionRes.ok) {
+          const errText = await visionRes.text()
+          throw new Error(`Mistral API error (${visionRes.status}): ${errText}`)
+        }
+
+        const visionData = await visionRes.json()
+        contentText = visionData.choices?.[0]?.message?.content
+      } else {
+        // Google Gemini
+        const geminiKey = (getHeader('x-gemini-key') || localStorage.getItem('gemini_api_key') || '').trim()
+        const geminiModel = getHeader('x-gemini-model') || localStorage.getItem('gemini_model') || 'gemini-2.5-flash'
+        if (!geminiKey) {
+          return jsonResponse({ error: 'Gemini API Key is missing. Please configure it in settings.' }, 400)
+        }
+
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`
+        const geminiRes = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { inlineData: { data: base64Data, mimeType } },
+                  { text: invoiceSystemPrompt }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json'
+            }
+          })
+        })
+
+        if (!geminiRes.ok) {
+          const errText = await geminiRes.text()
+          throw new Error(`Gemini API error (${geminiRes.status}): ${errText}`)
+        }
+
+        const geminiData = await geminiRes.json()
+        contentText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
+      }
+
+      if (!contentText) {
+        throw new Error('Could not extract text from invoice.')
+      }
+
+      // Parse JSON
+      let cleanJson = contentText.trim()
+      if (cleanJson.startsWith('```json')) cleanJson = cleanJson.replace(/^```json/, '').replace(/```$/, '').trim()
+      else if (cleanJson.startsWith('```')) cleanJson = cleanJson.replace(/^```/, '').replace(/```$/, '').trim()
+
+      const parsed = JSON.parse(cleanJson)
+
+      const cleanedResult = {
+        invoice_no: parsed.invoice_no || 'N/A',
+        date: cleanDate(parsed.date),
+        supplier_name: parsed.supplier_name || 'N/A',
+        supplier_gstin: parsed.supplier_gstin || '',
+        supplier_phone: parsed.supplier_phone || '',
+        buyer_name: parsed.buyer_name || '',
+        buyer_gstin: parsed.buyer_gstin || '',
+        total_qty: cleanNumber(parsed.total_qty),
+        gross_amount: cleanNumber(parsed.gross_amount),
+        tax_percent: cleanNumber(parsed.tax_percent),
+        gst_amount: cleanNumber(parsed.gst_amount),
+        total_amount: cleanNumber(parsed.total_amount),
+        total_items: cleanNumber(parsed.total_items),
+        items: (parsed.items || []).map(item => ({
+          product_name: item.product_name || 'N/A',
+          size: String(item.size || '').toUpperCase().trim(),
+          finish: item.finish || 'Matte',
+          brand: item.brand || parsed.supplier_name || 'KAG',
+          hsn_code: String(item.hsn_code || '69072300').replace(/\D/g, ''),
+          quantity: cleanNumber(item.quantity),
+          rate: cleanNumber(item.rate),
+          amount: cleanNumber(item.amount)
+        }))
+      }
+
+      // Check duplicate against Supabase
+      let isDuplicate = false
+      try {
+        const { data: dupData } = await supabase
+          .from('invoices')
+          .select('invoice_no, supplier_name')
+          .eq('invoice_no', cleanedResult.invoice_no)
+        if (dupData && dupData.length > 0) isDuplicate = true
+      } catch {}
+      cleanedResult.is_duplicate = isDuplicate
+
+      return jsonResponse(cleanedResult)
+    } catch (err) {
+      console.error('❌ [apiAdapter] /api/upload-invoice error:', err)
+      return jsonResponse({ error: err.message || 'Invoice scanning failed' }, 500)
     }
   }
 

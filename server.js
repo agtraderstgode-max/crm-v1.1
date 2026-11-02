@@ -21,7 +21,7 @@ try {
 }
 
 const app = express()
-const PORT = process.env.PORT || 5001
+const PORT = process.env.PORT || 5005
 
 // ─── Mode Switch ──────────────────────────────────────────────────────────────
 // Development: USE_CLOUD=false → instant local reads, background Supabase sync
