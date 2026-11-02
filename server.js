@@ -1046,6 +1046,80 @@ app.post('/api/pricing-settings', (req, res) => {
   res.json({ success: true, brand, discount_percentage: pct, brand_discounts: settings.brand_discounts })
 })
 
+// ─── POST /api/inventory/reduce-stock ──────────────────────────────────────────
+app.post('/api/inventory/reduce-stock', (req, res) => {
+  const { items = [] } = req.body
+  const products = getLocalProducts()
+  const updatedList = []
+
+  for (const item of items) {
+    const qtyToReduce = parseFloat(item.quantity || item.qty || 0)
+    if (qtyToReduce <= 0) continue
+
+    const prod = products.find(p => p.id === (item.product_id || item.id) || p.name.toLowerCase().trim() === (item.product_name || item.name || '').toLowerCase().trim())
+    if (prod) {
+      const curStock = parseFloat(prod.stock || 0)
+      const curAvail = parseFloat(prod.available != null ? prod.available : curStock)
+      prod.stock = Math.max(0, curStock - qtyToReduce)
+      prod.available = Math.max(0, curAvail - qtyToReduce)
+
+      updatedList.push({
+        id: prod.id,
+        name: prod.name,
+        reduced_by: qtyToReduce,
+        new_stock: prod.stock,
+        new_available: prod.available
+      })
+    }
+  }
+
+  saveLocalProducts(products)
+  res.json({ success: true, updated: updatedList })
+})
+
+// ─── GET & POST /api/billing/invoices ──────────────────────────────────────────
+const GST_INVOICES_FILE = path.join(DATA_DIR, 'gst_invoices.json')
+const getGstInvoices = () => {
+  try { return JSON.parse(fs.readFileSync(GST_INVOICES_FILE, 'utf-8')) } catch { return [] }
+}
+const saveGstInvoices = (invs) => {
+  try { fs.writeFileSync(GST_INVOICES_FILE, JSON.stringify(invs, null, 2), 'utf-8') } catch {}
+}
+
+app.get('/api/billing/invoices', (req, res) => {
+  res.json(getGstInvoices())
+})
+
+app.post('/api/billing/invoices', (req, res) => {
+  const existing = getGstInvoices()
+  const nextNum = existing.length + 1
+  const inv = {
+    ...req.body,
+    id: req.body.id || `INV-${String(nextNum).padStart(4, '0')}`,
+    date: req.body.date || new Date().toISOString().split('T')[0],
+    created_at: new Date().toISOString()
+  }
+
+  // Auto-reduce stock
+  if (Array.isArray(inv.items) && inv.items.length > 0) {
+    const products = getLocalProducts()
+    for (const item of inv.items) {
+      const qtyToReduce = parseFloat(item.quantity || item.qty || 0)
+      if (qtyToReduce <= 0) continue
+      const prod = products.find(p => p.id === (item.product_id || item.id) || p.name.toLowerCase().trim() === (item.product_name || item.name || '').toLowerCase().trim())
+      if (prod) {
+        prod.stock = Math.max(0, parseFloat(prod.stock || 0) - qtyToReduce)
+        prod.available = Math.max(0, parseFloat(prod.available || prod.stock) - qtyToReduce)
+      }
+    }
+    saveLocalProducts(products)
+  }
+
+  existing.unshift(inv)
+  saveGstInvoices(existing)
+  res.status(201).json(inv)
+})
+
 // ─── POST /api/categories/auto-classify ─────────────────────────────────────────
 app.post('/api/categories/auto-classify', (req, res) => {
   const { brand = 'PUPA', product_name = '', rate = 0, size = 'Standard' } = req.body

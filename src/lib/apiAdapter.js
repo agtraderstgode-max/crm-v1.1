@@ -885,44 +885,61 @@ function getQuotationSqft(cat, customMap = {}) {
 
     const joined = (prods || []).map(p => {
       const meta = productHsnTaxMap[p.id] || {}
-      const hsn_code = p.hsn_code || meta.hsn_code || '69072300'
+      let brand = p.brand || meta.brand || 'KAG'
+      if (brand.toUpperCase().includes('KAG')) brand = 'KAG'
+      else if (brand.toUpperCase().includes('PUPA')) brand = 'PUPA'
+      else if (brand.toUpperCase().includes('ROFF')) brand = 'ROFF'
+      const brandUpper = brand.toUpperCase()
+
+      const cat = p.category_id && p.category_id !== 'NO_CAT' ? categories.find(c => c.id === p.category_id) : null
+      const isSan = (cat && cat.type === 'SANITARY') || brandUpper.includes('PUPA')
+      const isAdh = (cat && cat.type === 'ADHESIVE') || brandUpper.includes('ROFF')
+      const isHard = (cat && cat.type === 'HARDWARE')
+
+      const defaultHsn = isSan ? '69101000' : isAdh ? '32141000' : '69072300'
+      const hsn_code = p.hsn_code || meta.hsn_code || defaultHsn
       const tax_percent = p.tax_percent != null ? p.tax_percent : (meta.tax_percent != null ? meta.tax_percent : 18)
       const gst_percent = p.gst_percent != null ? p.gst_percent : (meta.gst_percent != null ? meta.gst_percent : 18)
-      const purchase_rate = p.purchase_rate != null ? p.purchase_rate : (meta.purchase_rate || 0)
-      const brand = p.brand || meta.brand || 'KAG'
 
-      if (p.category_id && p.category_id !== 'NO_CAT') {
-        const cat = categories.find(c => c.id === p.category_id)
-        if (cat) {
-          const isSan = (cat.type === 'SANITARY') || brand.toUpperCase().includes('PUPA') || (cat.brand && cat.brand.toUpperCase() === 'PUPA')
-          const isAdh = (cat.type === 'ADHESIVE') || brand.toUpperCase().includes('ROFF') || (cat.brand && cat.brand.toUpperCase() === 'ROFF')
-          const isHard = (cat.type === 'HARDWARE')
-          const unit = p.unit || cat.unit || (isSan ? 'pcs' : isAdh ? 'bags' : isHard ? 'sets' : 'boxes')
-          const displayPrice = isSan ? `₹${cat.online_price}/pc` : isAdh ? `₹${cat.online_price}/bag` : isHard ? `₹${cat.online_price}/set` : `₹${cat.sqft_price}/sqft`
+      // Intelligent purchase rate fallback if not directly recorded
+      let estimatedRate = 0
+      if (cat) {
+        estimatedRate = cat.online_price ? Math.round(cat.online_price * 0.70) : (cat.mrp ? Math.round(cat.mrp * 0.55) : 0)
+      } else if (p.price) {
+        const numP = cleanNumber(p.price)
+        estimatedRate = numP > 0 ? Math.round(numP * 0.70) : 0
+      }
+      const purchase_rate = p.purchase_rate != null && p.purchase_rate > 0 
+        ? p.purchase_rate 
+        : (meta.purchase_rate != null && meta.purchase_rate > 0 ? meta.purchase_rate : estimatedRate)
 
-          return {
-            ...p,
-            brand,
-            unit,
-            hsn_code,
-            tax_percent,
-            gst_percent,
-            purchase_rate,
-            mrp: cat.mrp,
-            online_price: cat.online_price,
-            sqft_price: cat.sqft_price,
-            price: displayPrice,
-            pcs_per_box: cat.pcs_per_box,
-            sqft_per_box: cat.sqft_per_box,
-            sqft_per_box_quotation: (isSan || isAdh || isHard) ? 1 : getQuotationSqft(cat, customMap),
-            weight_per_box: cat.weight_per_box,
-            category: cat.name
-          }
+      const unit = p.unit || cat?.unit || (isSan ? 'pcs' : isAdh ? 'bags' : isHard ? 'sets' : 'boxes')
+      const displayPrice = isSan ? `₹${cat?.online_price || 0}/pc` : isAdh ? `₹${cat?.online_price || 0}/bag` : isHard ? `₹${cat?.online_price || 0}/set` : `₹${cat?.sqft_price || 0}/sqft`
+
+      if (cat) {
+        return {
+          ...p,
+          brand,
+          unit,
+          hsn_code,
+          tax_percent,
+          gst_percent,
+          purchase_rate,
+          mrp: cat.mrp,
+          online_price: cat.online_price,
+          sqft_price: cat.sqft_price,
+          price: displayPrice,
+          pcs_per_box: cat.pcs_per_box,
+          sqft_per_box: cat.sqft_per_box,
+          sqft_per_box_quotation: (isSan || isAdh || isHard) ? 1 : getQuotationSqft(cat, customMap),
+          weight_per_box: cat.weight_per_box,
+          category: cat.name
         }
       }
       return {
         ...p,
         brand,
+        unit,
         hsn_code,
         tax_percent,
         gst_percent,
@@ -1409,6 +1426,129 @@ function getQuotationSqft(cat, customMap = {}) {
     }
 
     return jsonResponse({ success: true, brand: targetBrand, discount_percentage: pct, brand_discounts: brandDiscounts })
+  }
+
+  // ─── /api/inventory/reduce-stock ──────────────────────────────────────────
+  if (pathname === '/api/inventory/reduce-stock' && method === 'POST') {
+    const { items = [] } = body
+    if (!Array.isArray(items) || items.length === 0) {
+      return jsonResponse({ error: 'No items provided for stock reduction' }, 400)
+    }
+
+    const { data: allProds } = await supabase.from('products').select('*').range(0, 4999)
+    const updatedList = []
+
+    for (const item of items) {
+      const qtyToReduce = parseFloat(item.quantity || item.qty || 0)
+      if (qtyToReduce <= 0) continue
+
+      let prod = null
+      if (item.product_id || item.id) {
+        const targetId = item.product_id || item.id
+        prod = (allProds || []).find(p => p.id === targetId)
+      }
+      if (!prod && (item.product_name || item.name)) {
+        const targetName = (item.product_name || item.name).toLowerCase().trim()
+        prod = (allProds || []).find(p => p.name.toLowerCase().trim() === targetName)
+      }
+
+      if (prod) {
+        const curStock = parseFloat(prod.stock || 0)
+        const curAvail = parseFloat(prod.available != null ? prod.available : curStock)
+        const newStock = Math.max(0, curStock - qtyToReduce)
+        const newAvail = Math.max(0, curAvail - qtyToReduce)
+
+        await supabase.from('products').update({
+          stock: newStock,
+          available: newAvail
+        }).eq('id', prod.id)
+
+        // update in-memory list for subsequent items of same product
+        prod.stock = newStock
+        prod.available = newAvail
+
+        updatedList.push({
+          id: prod.id,
+          name: prod.name,
+          reduced_by: qtyToReduce,
+          previous_stock: curStock,
+          new_stock: newStock,
+          new_available: newAvail
+        })
+      }
+    }
+
+    return jsonResponse({
+      success: true,
+      message: `Stock successfully reduced for ${updatedList.length} products`,
+      updated: updatedList
+    })
+  }
+
+  // ─── /api/billing/invoices (GST Sales Invoices) ──────────────────────────────
+  if (pathname === '/api/billing/invoices' && method === 'GET') {
+    try {
+      const { data: setting } = await supabase.from('settings').select('value').eq('key', 'gst_sale_invoices').maybeSingle()
+      const invoices = (setting && setting.value) || []
+      return jsonResponse(invoices)
+    } catch (e) {
+      return jsonResponse([])
+    }
+  }
+
+  if (pathname === '/api/billing/invoices' && method === 'POST') {
+    const { data: setting } = await supabase.from('settings').select('value').eq('key', 'gst_sale_invoices').maybeSingle()
+    const existingList = (setting && setting.value) || []
+    
+    // Auto-generate invoice number if not provided
+    const nextNum = existingList.length + 1
+    const invId = body.id || `INV-${String(nextNum).padStart(4, '0')}`
+
+    const newInv = {
+      ...body,
+      id: invId,
+      date: body.date || new Date().toISOString().split('T')[0],
+      created_at: new Date().toISOString()
+    }
+
+    // 1. Auto-reduce stock for all items billed!
+    if (Array.isArray(newInv.items) && newInv.items.length > 0) {
+      const { data: allProds } = await supabase.from('products').select('*').range(0, 4999)
+      for (const item of newInv.items) {
+        const qtyToReduce = parseFloat(item.quantity || item.qty || 0)
+        if (qtyToReduce <= 0) continue
+
+        let prod = (allProds || []).find(p => p.id === item.product_id || p.name.toLowerCase().trim() === (item.product_name || item.name || '').toLowerCase().trim())
+        if (prod) {
+          const curStock = parseFloat(prod.stock || 0)
+          const curAvail = parseFloat(prod.available != null ? prod.available : curStock)
+          const newStock = Math.max(0, curStock - qtyToReduce)
+          const newAvail = Math.max(0, curAvail - qtyToReduce)
+
+          await supabase.from('products').update({
+            stock: newStock,
+            available: newAvail
+          }).eq('id', prod.id)
+
+          prod.stock = newStock
+          prod.available = newAvail
+        }
+      }
+    }
+
+    // 2. Persist invoice to settings
+    try {
+      existingList.unshift(newInv)
+      await supabase.from('settings').upsert({
+        key: 'gst_sale_invoices',
+        value: existingList,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'key' })
+    } catch (e) {
+      console.error('Error saving GST invoice:', e)
+    }
+
+    return jsonResponse(newInv, 201)
   }
 
   // ─── /api/returns ──────────────────────────────────────────────────────────
