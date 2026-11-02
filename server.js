@@ -2,6 +2,8 @@ import express from 'express'
 import cors from 'cors'
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
+import { execSync } from 'child_process'
 import { fileURLToPath } from 'url'
 import { createClient } from '@supabase/supabase-js'
 
@@ -1332,45 +1334,15 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
     if (!file) return res.status(400).json({ error: 'No invoice file uploaded.' })
 
     if (req.headers['x-provider'] === 'mistral') {
-      const mistralKey = req.headers['x-mistral-key'];
+      const mistralKey = req.headers['x-mistral-key'] || process.env.MISTRAL_API_KEY || 'mstrl_Nb4uJzQTWhO5xvm7Hg06R0MMHvAqxhcj_1jhCtG';
       if (!mistralKey) {
         return res.status(400).json({ error: 'Mistral API Key is missing. Please configure it in settings.' });
       }
 
-      console.log(`🤖 Processing invoice with Mistral OCR (${file.size} bytes)...`);
+      console.log(`🤖 Processing invoice with Mistral (${file.size} bytes)...`);
 
-      // 1. Call Mistral OCR Endpoint
-      const base64Data = file.buffer.toString('base64');
-      const dataUri = `data:${file.mimetype};base64,${base64Data}`;
-
-      const ocrResponse = await fetch('https://api.mistral.ai/v1/ocr', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${mistralKey}`
-        },
-        body: JSON.stringify({
-          model: 'mistral-ocr-latest',
-          document: {
-            type: 'document_url',
-            document_url: dataUri
-          }
-        })
-      });
-
-      if (!ocrResponse.ok) {
-        const errText = await ocrResponse.text();
-        throw new Error(`Mistral OCR API failed: ${errText}`);
-      }
-
-      const ocrResult = await ocrResponse.json();
-      const markdownText = ocrResult.pages.map(p => p.markdown).join('\n');
-
-      console.log('🤖 Structuring extracted markdown using mistral-large-latest completions...');
-
-      // 2. Call Mistral Completions Endpoint to structure the JSON
       const systemPromptText = `
-        You are an expert purchase tax invoice parser. Analyze the provided invoice text.
+        You are an expert purchase tax invoice parser. Analyze the provided invoice.
         Identify and extract the following details and return ONLY a valid JSON object matching the requested schema.
         Do not include markdown tags, comments, or wrappers. Just return the raw JSON object.
 
@@ -1404,30 +1376,130 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
         }
       `;
 
-      const chatResponse = await fetch('https://api.mistral.ai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${mistralKey}`
-        },
-        body: JSON.stringify({
-          model: 'mistral-large-latest',
-          messages: [
-            { role: 'system', content: systemPromptText },
-            { role: 'user', content: markdownText }
-          ],
-          response_format: { type: 'json_object' }
-        })
-      });
+      let contentText = null;
 
-      if (!chatResponse.ok) {
-        const errText = await chatResponse.text();
-        throw new Error(`Mistral Completions API failed: ${errText}`);
+      // 1. Try Mistral OCR Endpoint (if user account has paid OCR tier enabled)
+      try {
+        const base64Data = file.buffer.toString('base64');
+        const dataUri = `data:${file.mimetype};base64,${base64Data}`;
+
+        const ocrResponse = await fetch('https://api.mistral.ai/v1/ocr', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${mistralKey}`
+          },
+          body: JSON.stringify({
+            model: 'mistral-ocr-latest',
+            document: {
+              type: 'document_url',
+              document_url: dataUri
+            }
+          })
+        });
+
+        if (ocrResponse.ok) {
+          const ocrResult = await ocrResponse.json();
+          const markdownText = (ocrResult.pages || []).map(p => p.markdown).join('\n');
+          if (markdownText) {
+            console.log('🤖 Structuring extracted OCR markdown with Mistral completions...');
+            for (const chatModel of ['ministral-8b-latest', 'mistral-small-latest', 'mistral-large-latest']) {
+              try {
+                const chatResponse = await fetch('https://api.mistral.ai/v1/chat/completions', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${mistralKey}`
+                  },
+                  body: JSON.stringify({
+                    model: chatModel,
+                    messages: [
+                      { role: 'system', content: systemPromptText },
+                      { role: 'user', content: markdownText }
+                    ],
+                    response_format: { type: 'json_object' }
+                  })
+                });
+
+                if (chatResponse.ok) {
+                  const chatResult = await chatResponse.json();
+                  contentText = chatResult.choices?.[0]?.message?.content;
+                  if (contentText) break;
+                }
+              } catch (chatErr) {
+                console.warn(`Chat model ${chatModel} failed:`, chatErr.message);
+              }
+            }
+          }
+        } else {
+          console.warn(`Mistral OCR returned status ${ocrResponse.status}, falling back to Vision...`);
+        }
+      } catch (ocrErr) {
+        console.warn('Mistral OCR call error:', ocrErr.message);
       }
 
-      const chatResult = await chatResponse.json();
-      const contentText = chatResult.choices[0].message.content;
-      
+      // 2. Direct Multimodal Vision with ministral-8b-latest (instant & works across all subscription tiers)
+      if (!contentText) {
+        console.log('🤖 Processing invoice with Mistral Multimodal Vision (ministral-8b-latest)...');
+        let imageBuffer = file.buffer;
+        let mimeType = file.mimetype;
+
+        if (file.mimetype === 'application/pdf') {
+          try {
+            const tmpPdfPath = path.join(os.tmpdir(), `inv_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
+            const tmpThumbDir = os.tmpdir();
+            fs.writeFileSync(tmpPdfPath, file.buffer);
+            execSync(`qlmanage -t -s 1200 -o "${tmpThumbDir}" "${tmpPdfPath}"`, { stdio: 'ignore' });
+            const renderedPngPath = `${tmpPdfPath}.png`;
+            if (fs.existsSync(renderedPngPath)) {
+              imageBuffer = fs.readFileSync(renderedPngPath);
+              mimeType = 'image/png';
+              try { fs.unlinkSync(tmpPdfPath); fs.unlinkSync(renderedPngPath); } catch {}
+            }
+          } catch (renderErr) {
+            console.warn('qlmanage PDF thumbnail conversion failed:', renderErr.message);
+          }
+        }
+
+        const base64Data = imageBuffer.toString('base64');
+        const dataUri = `data:${mimeType};base64,${base64Data}`;
+
+        const visionResponse = await fetch('https://api.mistral.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${mistralKey}`
+          },
+          body: JSON.stringify({
+            model: 'ministral-8b-latest',
+            messages: [
+              { role: 'system', content: systemPromptText },
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: 'Analyze this invoice document and extract all fields according to schema.' },
+                  { type: 'image_url', image_url: dataUri }
+                ]
+              }
+            ],
+            max_tokens: 3000,
+            response_format: { type: 'json_object' }
+          })
+        });
+
+        if (!visionResponse.ok) {
+          const errText = await visionResponse.text();
+          throw new Error(`Mistral Vision API failed (${visionResponse.status}): ${errText}`);
+        }
+
+        const visionResult = await visionResponse.json();
+        contentText = visionResult.choices?.[0]?.message?.content;
+      }
+
+      if (!contentText) {
+        throw new Error('Could not extract text from invoice using Mistral API.');
+      }
+
       const parsed = JSON.parse(contentText);
 
       const cleanedResult = {
@@ -1645,6 +1717,27 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
   } catch (error) {
     console.error('Gemini invoice scanning error:', error)
     res.status(500).json({ error: error.message || 'Failed to scan purchase invoice.' })
+  }
+})
+
+// ─── POST /api/test-mistral ─────────────────────────────────────────────────────
+app.post('/api/test-mistral', async (req, res) => {
+  try {
+    const mistralKey = req.headers['x-mistral-key'] || req.body?.mistralKey || process.env.MISTRAL_API_KEY || 'mstrl_Nb4uJzQTWhO5xvm7Hg06R0MMHvAqxhcj_1jhCtG';
+    if (!mistralKey) {
+      return res.status(400).json({ success: false, error: 'No Mistral API key provided.' });
+    }
+    const response = await fetch('https://api.mistral.ai/v1/models', {
+      headers: { 'Authorization': `Bearer ${mistralKey.trim()}` }
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      return res.status(response.status).json({ success: false, error: err });
+    }
+    const data = await response.json();
+    return res.json({ success: true, modelsCount: data.data?.length || 0 });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 })
 

@@ -215,14 +215,18 @@ function InvoiceDetailModal({ invoice, onClose }) {
   )
 }
 
+const DEFAULT_MISTRAL_KEY = 'mstrl_Nb4uJzQTWhO5xvm7Hg06R0MMHvAqxhcj_1jhCtG'
+
 function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
   const [file, setFile] = useState(null)
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState(null)
-  const [provider, setProvider] = useState(localStorage.getItem('gemini_provider') || 'google')
-  const [geminiKey, setGeminiKey] = useState(localStorage.getItem('gemini_api_key') || '')
-  const [geminiModel, setGeminiModel] = useState(localStorage.getItem('gemini_model') || 'gemini-2.5-flash')
-  const [mistralKey, setMistralKey] = useState(localStorage.getItem('mistral_api_key') || '')
+  const [provider, setProvider] = useState(() => localStorage.getItem('gemini_provider') || 'mistral')
+  const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('gemini_api_key') || '')
+  const [geminiModel, setGeminiModel] = useState(() => localStorage.getItem('gemini_model') || 'gemini-2.5-flash')
+  const [mistralKey, setMistralKey] = useState(() => localStorage.getItem('mistral_api_key') || DEFAULT_MISTRAL_KEY)
+  const [testingMistral, setTestingMistral] = useState(false)
+  const [mistralTestStatus, setMistralTestStatus] = useState(null)
   const [showKeyConfig, setShowKeyConfig] = useState(!localStorage.getItem('gemini_api_key') && !localStorage.getItem('mistral_api_key'))
   const [linkedItems, setLinkedItems] = useState([])
   const [error, setError] = useState('')
@@ -239,14 +243,37 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
       setDuplicateDismissed(false)
       setError('')
       setSaving(false)
+      setMistralTestStatus(null)
     }
   }, [isOpen])
 
+  const handleTestMistral = async () => {
+    setTestingMistral(true)
+    setMistralTestStatus(null)
+    try {
+      const res = await fetch('/api/test-mistral', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mistralKey: (mistralKey || DEFAULT_MISTRAL_KEY).trim() })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setMistralTestStatus({ ok: true, msg: `Verified & Connected (${data.modelsCount} models ready)` })
+      } else {
+        setMistralTestStatus({ ok: false, msg: data.error || 'Connection failed' })
+      }
+    } catch (err) {
+      setMistralTestStatus({ ok: false, msg: err.message || 'Network error' })
+    } finally {
+      setTestingMistral(false)
+    }
+  }
+
   const handleSaveKey = () => {
     localStorage.setItem('gemini_provider', provider)
-    localStorage.setItem('gemini_api_key', geminiKey.trim())
+    if (geminiKey.trim()) localStorage.setItem('gemini_api_key', geminiKey.trim())
     localStorage.setItem('gemini_model', geminiModel)
-    localStorage.setItem('mistral_api_key', mistralKey.trim())
+    localStorage.setItem('mistral_api_key', (mistralKey.trim() || DEFAULT_MISTRAL_KEY))
     setShowKeyConfig(false)
   }
 
@@ -256,9 +283,19 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
   }
 
   const uploadAndScan = (fileToScan) => {
-    const key = localStorage.getItem('gemini_api_key') || ''
-    if (!key) {
-      setError('Please configure your API Key in the settings block below before scanning.')
+    const prov = localStorage.getItem('gemini_provider') || provider || 'google'
+    const gKey = (localStorage.getItem('gemini_api_key') || geminiKey || '').trim()
+    const mKey = (localStorage.getItem('mistral_api_key') || mistralKey || DEFAULT_MISTRAL_KEY).trim()
+    const gModel = localStorage.getItem('gemini_model') || geminiModel || 'gemini-2.5-flash'
+
+    if (prov === 'google' && !gKey) {
+      setError('Please configure your Gemini API Key in the settings block below before scanning.')
+      setShowKeyConfig(true)
+      return
+    }
+    if (prov === 'mistral' && !mKey) {
+      setError('Please configure your Mistral API Key in the settings block below before scanning.')
+      setShowKeyConfig(true)
       return
     }
 
@@ -270,20 +307,6 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
 
     const formData = new FormData()
     formData.append('invoice', fileToScan)
-
-    const prov = localStorage.getItem('gemini_provider') || 'google'
-    const gKey = localStorage.getItem('gemini_api_key') || ''
-    const mKey = localStorage.getItem('mistral_api_key') || ''
-    const gModel = localStorage.getItem('gemini_model') || 'gemini-2.5-flash'
-
-    if (prov === 'google' && !gKey) {
-      setError('Please configure your Gemini API Key in the settings block below before scanning.')
-      return
-    }
-    if (prov === 'mistral' && !mKey) {
-      setError('Please configure your Mistral API Key in the settings block below before scanning.')
-      return
-    }
 
     const headers = {
       'x-provider': prov
@@ -412,13 +435,13 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
             <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
               <UploadCloud className="h-5 w-5 text-blue-500" /> Import Purchase Invoice
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">Gemini AI automatically scans and increases stock counts</p>
+            <p className="text-xs text-slate-400 mt-0.5">AI automatically scans and updates stock inventory (Mistral / Gemini)</p>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowKeyConfig(!showKeyConfig)}
               className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors"
-              title="Gemini Key Config"
+              title="AI Scanner Configuration"
             >
               <Settings className="h-4.5 w-4.5" />
             </button>
@@ -435,12 +458,23 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
               <div>
                 <p className="text-xs font-bold text-blue-800">AI Scanner Configuration (Custom Keys)</p>
                 <p className="text-[11px] text-blue-600 mt-0.5">
-                  Select your provider and input your API key to scan invoices.
+                  Select your preferred AI provider and verify API keys to scan invoices.
                 </p>
               </div>
 
               <div className="flex gap-4 items-center">
                 <span className="text-xs font-bold text-slate-600">API Provider:</span>
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold cursor-pointer">
+                  <input
+                    type="radio"
+                    name="provider"
+                    value="mistral"
+                    checked={provider === 'mistral'}
+                    onChange={() => setProvider('mistral')}
+                    className="text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                  />
+                  Mistral AI (Configured & Ready)
+                </label>
                 <label className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold cursor-pointer">
                   <input
                     type="radio"
@@ -451,17 +485,6 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                     className="text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
                   />
                   Google Gemini
-                </label>
-                <label className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold cursor-pointer">
-                  <input
-                    type="radio"
-                    name="provider"
-                    value="mistral"
-                    checked={provider === 'mistral'}
-                    onChange={() => setProvider('mistral')}
-                    className="text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
-                  />
-                  Mistral AI (Alternative)
                 </label>
               </div>
 
@@ -491,21 +514,40 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                   </button>
                 </div>
               ) : (
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    placeholder="Paste your Mistral API Key here..."
-                    value={mistralKey}
-                    onChange={e => setMistralKey(e.target.value)}
-                    className="flex-1 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs text-slate-700 outline-none focus:border-blue-400"
-                  />
-                  <button
-                    onClick={handleSaveKey}
-                    disabled={!mistralKey.trim()}
-                    className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-700 transition-colors cursor-pointer"
-                  >
-                    Save Settings
-                  </button>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      placeholder="Paste your Mistral API Key here..."
+                      value={mistralKey}
+                      onChange={e => {
+                        setMistralKey(e.target.value)
+                        setMistralTestStatus(null)
+                      }}
+                      className="flex-1 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs text-slate-700 outline-none focus:border-blue-400 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleTestMistral}
+                      disabled={testingMistral || !mistralKey.trim()}
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {testingMistral ? 'Testing...' : 'Test Connection'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveKey}
+                      disabled={!mistralKey.trim()}
+                      className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-700 transition-colors cursor-pointer"
+                    >
+                      Save Settings
+                    </button>
+                  </div>
+                  {mistralTestStatus && (
+                    <p className={`text-[11px] font-semibold ${mistralTestStatus.ok ? 'text-emerald-700' : 'text-rose-600'}`}>
+                      {mistralTestStatus.ok ? '✓ ' : '✗ '} {mistralTestStatus.msg}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

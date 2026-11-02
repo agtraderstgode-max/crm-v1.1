@@ -37,7 +37,7 @@ export function AiChatWidget() {
   useEffect(() => {
     try {
       const gKey = localStorage.getItem('gemini_api_key') || ''
-      const mKey = localStorage.getItem('mistral_api_key') || ''
+      const mKey = localStorage.getItem('mistral_api_key') || 'mstrl_Nb4uJzQTWhO5xvm7Hg06R0MMHvAqxhcj_1jhCtG'
       const prov = localStorage.getItem('gemini_provider') || AI_PROVIDERS.AUTO
       setGeminiKey(gKey)
       setMistralKey(mKey)
