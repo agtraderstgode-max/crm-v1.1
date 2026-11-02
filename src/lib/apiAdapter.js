@@ -1014,16 +1014,121 @@ function getQuotationSqft(cat, customMap = {}) {
   if (pathname === '/api/categories' && method === 'GET') {
     const { data: rawCats } = await supabase.from('categories').select('*').range(0, 4999)
     let customMap = {}
+    let brandMap = {}
     try {
       const { data: qSetting } = await supabase.from('settings').select('value').eq('key', 'category_quotation_sqft').maybeSingle()
       if (qSetting && qSetting.value) customMap = qSetting.value
     } catch (e) {}
+    try {
+      const { data: bSetting } = await supabase.from('settings').select('value').eq('key', 'category_brand_map').maybeSingle()
+      if (bSetting && bSetting.value) brandMap = bSetting.value
+    } catch (e) {}
 
-    const enriched = (rawCats || []).map(c => ({
-      ...c,
-      sqft_per_box_quotation: getQuotationSqft(c, customMap)
-    }))
+    const enriched = (rawCats || []).map(c => {
+      let b = brandMap[c.id]
+      if (!b) {
+        const uType = (c.type || '').toUpperCase()
+        const uName = (c.name || '').toUpperCase()
+        if (uType === 'SANITARY' || uName.includes('PUPA')) b = 'PUPA'
+        else if (uType === 'ADHESIVE' || uName.includes('ROFF')) b = 'ROFF'
+        else b = 'KAG'
+      }
+      return {
+        ...c,
+        brand: b,
+        sqft_per_box_quotation: getQuotationSqft(c, customMap)
+      }
+    })
     return jsonResponse(enriched)
+  }
+
+  if (pathname === '/api/categories/auto-classify' && method === 'POST') {
+    const targetBrand = (body.brand || 'PUPA').toUpperCase().trim()
+    const prodName = (body.product_name || '').trim()
+    const rate = parseFloat(body.rate || 0)
+    const size = body.size || 'Standard'
+
+    const { data: rawCats } = await supabase.from('categories').select('*').range(0, 4999)
+    let brandMap = {}
+    try {
+      const { data: bSetting } = await supabase.from('settings').select('value').eq('key', 'category_brand_map').maybeSingle()
+      if (bSetting && bSetting.value) brandMap = bSetting.value
+    } catch (e) {}
+
+    // Find if a category for this brand already matches
+    const existing = (rawCats || []).find(c => {
+      const b = brandMap[c.id] || (c.type === 'SANITARY' ? 'PUPA' : c.type === 'ADHESIVE' ? 'ROFF' : 'KAG')
+      if (b !== targetBrand) return false
+      if (c.name && prodName && (prodName.toLowerCase().includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(prodName.toLowerCase()))) return true
+      return true
+    })
+
+    if (existing) {
+      return jsonResponse({
+        ...existing,
+        brand: targetBrand,
+        created: false
+      })
+    }
+
+    // Auto-create a brand classification category
+    let catType = 'SANITARY'
+    let catName = `${targetBrand} Sanitaryware & Fixtures`
+    let mrpMultiplier = 1.40
+    let discountPct = 20
+
+    if (targetBrand === 'ROFF' || prodName.toLowerCase().includes('bond') || prodName.toLowerCase().includes('adhesive')) {
+      catType = 'ADHESIVE'
+      catName = `${targetBrand} Adhesives & Grouts`
+      mrpMultiplier = 1.25
+      discountPct = 15
+    } else if (targetBrand === 'PUPA') {
+      catType = 'SANITARY'
+      if (prodName.toLowerCase().includes('closet') || prodName.toLowerCase().includes('commode') || prodName.toLowerCase().includes('ewc')) {
+        catName = 'Pupa Sanitary - One Piece & Wall Hung Closets'
+      } else if (prodName.toLowerCase().includes('basin') || prodName.toLowerCase().includes('sink')) {
+        catName = 'Pupa Sanitary - Wash Basins & Table Top'
+      } else {
+        catName = 'Pupa Sanitaryware & Bathware'
+      }
+      mrpMultiplier = 1.40
+      discountPct = 20
+    }
+
+    const calcMrp = rate > 0 ? Math.round(rate * mrpMultiplier) : 1500
+    const calcOnline = Math.round(calcMrp * (1 - discountPct / 100))
+    const newCatId = `${targetBrand}_${catType.slice(0, 3)}_${Date.now().toString().slice(-4)}`
+
+    const newCat = {
+      id: newCatId,
+      size: size,
+      name: catName,
+      type: catType,
+      sqft_per_box: 1,
+      pcs_per_box: 1,
+      weight_per_box: 0,
+      mrp: calcMrp,
+      online_price: calcOnline,
+      sqft_price: calcOnline,
+      discount_pct: discountPct
+    }
+
+    await supabase.from('categories').insert([newCat])
+
+    brandMap[newCatId] = targetBrand
+    try {
+      await supabase.from('settings').upsert({
+        key: 'category_brand_map',
+        value: brandMap,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'key' })
+    } catch (e) {}
+
+    return jsonResponse({
+      ...newCat,
+      brand: targetBrand,
+      created: true
+    }, 201)
   }
 
   if (pathname === '/api/categories' && method === 'POST') {
@@ -1050,6 +1155,19 @@ function getQuotationSqft(cat, customMap = {}) {
     const { error } = await supabase.from('categories').insert([newCategory])
     if (error) return jsonResponse({ error: error.message }, 400)
 
+    if (body.brand) {
+      try {
+        const { data: bSetting } = await supabase.from('settings').select('value').eq('key', 'category_brand_map').maybeSingle()
+        const brandMap = (bSetting && bSetting.value) || {}
+        brandMap[catId] = body.brand.toUpperCase().trim()
+        await supabase.from('settings').upsert({
+          key: 'category_brand_map',
+          value: brandMap,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' })
+      } catch (e) {}
+    }
+
     if (body.sqft_per_box_quotation !== undefined) {
       try {
         const { data: qSetting } = await supabase.from('settings').select('value').eq('key', 'category_quotation_sqft').maybeSingle()
@@ -1065,6 +1183,7 @@ function getQuotationSqft(cat, customMap = {}) {
 
     return jsonResponse({
       ...newCategory,
+      brand: body.brand ? body.brand.toUpperCase().trim() : 'KAG',
       sqft_per_box_quotation: body.sqft_per_box_quotation != null ? parseFloat(body.sqft_per_box_quotation) : getQuotationSqft(newCategory)
     }, 201)
   }
@@ -1093,6 +1212,19 @@ function getQuotationSqft(cat, customMap = {}) {
     const { error } = await supabase.from('categories').update(updated).eq('id', id)
     if (error) return jsonResponse({ error: error.message }, 400)
 
+    if (body.brand) {
+      try {
+        const { data: bSetting } = await supabase.from('settings').select('value').eq('key', 'category_brand_map').maybeSingle()
+        const brandMap = (bSetting && bSetting.value) || {}
+        brandMap[id] = body.brand.toUpperCase().trim()
+        await supabase.from('settings').upsert({
+          key: 'category_brand_map',
+          value: brandMap,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' })
+      } catch (e) {}
+    }
+
     if (body.sqft_per_box_quotation !== undefined) {
       try {
         const { data: qSetting } = await supabase.from('settings').select('value').eq('key', 'category_quotation_sqft').maybeSingle()
@@ -1110,6 +1242,7 @@ function getQuotationSqft(cat, customMap = {}) {
       success: true,
       id,
       ...updated,
+      brand: body.brand ? body.brand.toUpperCase().trim() : 'KAG',
       sqft_per_box_quotation: body.sqft_per_box_quotation != null ? parseFloat(body.sqft_per_box_quotation) : getQuotationSqft({ ...updated, id })
     })
   }
@@ -1122,19 +1255,65 @@ function getQuotationSqft(cat, customMap = {}) {
 
   // ─── /api/pricing-settings ──────────────────────────────────────────────────
   if (pathname === '/api/pricing-settings' && method === 'GET') {
+    let brandDiscounts = { KAG: 10, PUPA: 20, ROFF: 15 }
+    try {
+      const { data: bDisc } = await supabase.from('settings').select('value').eq('key', 'brand_pricing_discounts').maybeSingle()
+      if (bDisc && bDisc.value) brandDiscounts = { ...brandDiscounts, ...bDisc.value }
+    } catch (e) {}
+
     const saved = localStorage.getItem('crm_pricing_settings')
-    const settings = saved ? JSON.parse(saved) : { discount_percentage: 10 }
-    return jsonResponse(settings)
+    const globalDisc = saved ? JSON.parse(saved).discount_percentage : 10
+
+    return jsonResponse({
+      discount_percentage: globalDisc,
+      brand_discounts: brandDiscounts
+    })
   }
 
   if (pathname === '/api/pricing-settings' && method === 'POST') {
+    const targetBrand = body.brand ? body.brand.toUpperCase().trim() : 'ALL'
     const pct = parseFloat(body.discount_percentage || 10)
-    localStorage.setItem('crm_pricing_settings', JSON.stringify({ discount_percentage: pct }))
 
-    // Update all categories in Supabase with the new discount pct
+    if (targetBrand === 'ALL') {
+      localStorage.setItem('crm_pricing_settings', JSON.stringify({ discount_percentage: pct }))
+    }
+
+    let brandDiscounts = { KAG: 10, PUPA: 20, ROFF: 15 }
+    try {
+      const { data: bDisc } = await supabase.from('settings').select('value').eq('key', 'brand_pricing_discounts').maybeSingle()
+      if (bDisc && bDisc.value) brandDiscounts = { ...brandDiscounts, ...bDisc.value }
+    } catch (e) {}
+
+    if (targetBrand !== 'ALL') {
+      brandDiscounts[targetBrand] = pct
+    } else {
+      Object.keys(brandDiscounts).forEach(k => { brandDiscounts[k] = pct })
+    }
+
+    try {
+      await supabase.from('settings').upsert({
+        key: 'brand_pricing_discounts',
+        value: brandDiscounts,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'key' })
+    } catch (e) {}
+
+    let brandMap = {}
+    try {
+      const { data: bSetting } = await supabase.from('settings').select('value').eq('key', 'category_brand_map').maybeSingle()
+      if (bSetting && bSetting.value) brandMap = bSetting.value
+    } catch (e) {}
+
+    // Update matching categories in Supabase
     const { data: cats } = await supabase.from('categories').select('*').range(0, 4999)
     if (cats && cats.length > 0) {
-      const updatedCats = cats.map(c => {
+      const targetCats = cats.filter(c => {
+        if (targetBrand === 'ALL') return true
+        const b = brandMap[c.id] || (c.type === 'SANITARY' ? 'PUPA' : c.type === 'ADHESIVE' ? 'ROFF' : 'KAG')
+        return b === targetBrand
+      })
+
+      const updatedCats = targetCats.map(c => {
         const mrp = parseFloat(c.mrp || 0)
         const sqft = parseFloat(c.sqft_per_box || 1)
         const online_price = Math.round(mrp * (1 - pct / 100))
@@ -1146,11 +1325,13 @@ function getQuotationSqft(cat, customMap = {}) {
           sqft_price
         }
       })
+
       for (let i = 0; i < updatedCats.length; i += 20) {
         await supabase.from('categories').upsert(updatedCats.slice(i, i + 20), { onConflict: 'id' })
       }
     }
-    return jsonResponse({ success: true, discount_percentage: pct })
+
+    return jsonResponse({ success: true, brand: targetBrand, discount_percentage: pct, brand_discounts: brandDiscounts })
   }
 
   // ─── /api/returns ──────────────────────────────────────────────────────────

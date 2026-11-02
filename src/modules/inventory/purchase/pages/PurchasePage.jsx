@@ -1077,8 +1077,27 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
     }
   }, [isOpen])
 
+  // Group categories by brand
+  const brandGroups = useMemo(() => {
+    const map = {}
+    categories.forEach(c => {
+      const b = (c.brand || (c.type === 'SANITARY' ? 'PUPA' : c.type === 'ADHESIVE' ? 'ROFF' : 'KAG')).toUpperCase()
+      if (!map[b]) map[b] = []
+      map[b].push(c)
+    })
+    const order = ['PUPA', 'ROFF', 'KAG']
+    const otherBrands = Object.keys(map).filter(b => !order.includes(b)).sort()
+    const sorted = [...order.filter(b => map[b]), ...otherBrands]
+    return sorted.map(b => ({ brand: b, cats: map[b] }))
+  }, [categories])
+
   useEffect(() => {
     if (isOpen && invoice) {
+      const supName = (invoice.supplier_name || '').toUpperCase()
+      let invBrand = 'KAG'
+      if (supName.includes('PUPA')) invBrand = 'PUPA'
+      else if (supName.includes('ROFF')) invBrand = 'ROFF'
+
       const initialLinks = (invoice.items || []).map(item => {
         let selId = item.selectedId || 'NEW'
         let score = item.matchScore || 0
@@ -1089,12 +1108,25 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
             score = matched.score
           }
         }
-        const matchedCatId = categories && categories.length > 0 ? findBestCategoryMatch(item, categories) : ''
+
+        const itemBrand = (item.brand || invBrand).toUpperCase()
+
+        // Match category: prioritize brand-specific category
+        let matchedCatId = ''
+        if (categories && categories.length > 0) {
+          if (itemBrand === 'PUPA' || itemBrand === 'ROFF') {
+            const brandCat = categories.find(c => (c.brand || '').toUpperCase() === itemBrand)
+            if (brandCat) matchedCatId = brandCat.id
+          }
+          if (!matchedCatId) {
+            matchedCatId = findBestCategoryMatch(item, categories)
+          }
+        }
 
         return {
           product_name: item.product_name,
-          brand: item.brand || '',
-          hsn_code: item.hsn_code || '69072300',
+          brand: item.brand || invBrand,
+          hsn_code: item.hsn_code || (itemBrand === 'PUPA' ? '69101000' : itemBrand === 'ROFF' ? '32141000' : '69072300'),
           quantity: parseInt(item.quantity) || 0,
           rate: parseFloat(item.rate) || 0,
           amount: parseFloat(item.amount) || (parseInt(item.quantity) * parseFloat(item.rate)) || 0,
@@ -1125,6 +1157,80 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
     })
   }
 
+  const handleAutoClassifyItem = async (index) => {
+    const it = linkedItems[index]
+    const supName = (invoice.supplier_name || '').toUpperCase()
+    const brandToUse = (it.brand || (supName.includes('PUPA') ? 'PUPA' : supName.includes('ROFF') ? 'ROFF' : 'KAG')).toUpperCase()
+    try {
+      const res = await fetch('/api/categories/auto-classify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brand: brandToUse,
+          product_name: it.product_name,
+          rate: it.rate,
+          size: it.size || 'Standard',
+          finish: it.finish
+        })
+      })
+      const cat = await res.json()
+      if (cat && cat.id) {
+        setCategories(prev => {
+          if (!prev.some(c => c.id === cat.id)) return [...prev, cat]
+          return prev
+        })
+        handleCategoryChange(index, cat.id)
+      }
+    } catch (err) {
+      console.error('Auto-classify error:', err)
+    }
+  }
+
+  const handleAutoClassifyAll = async () => {
+    setSaving(true)
+    try {
+      const supName = (invoice.supplier_name || '').toUpperCase()
+      const updated = [...linkedItems]
+      let addedCats = []
+
+      for (let i = 0; i < updated.length; i++) {
+        const it = updated[i]
+        if (it.selectedId === 'NEW' && (!it.category_id || it.category_id === 'NO_CAT')) {
+          const brandToUse = (it.brand || (supName.includes('PUPA') ? 'PUPA' : supName.includes('ROFF') ? 'ROFF' : 'KAG')).toUpperCase()
+          const res = await fetch('/api/categories/auto-classify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              brand: brandToUse,
+              product_name: it.product_name,
+              rate: it.rate,
+              size: it.size || 'Standard',
+              finish: it.finish
+            })
+          })
+          const cat = await res.json()
+          if (cat && cat.id) {
+            updated[i] = { ...updated[i], category_id: cat.id }
+            if (!addedCats.some(c => c.id === cat.id)) addedCats.push(cat)
+          }
+        }
+      }
+
+      setLinkedItems(updated)
+      if (addedCats.length > 0) {
+        setCategories(prev => {
+          const map = new Map(prev.map(c => [c.id, c]))
+          addedCats.forEach(c => map.set(c.id, c))
+          return Array.from(map.values())
+        })
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleApprove = async () => {
     // Enforce that all items created as NEW variants must have a category classification mapped
     for (const item of linkedItems) {
@@ -1141,22 +1247,26 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
           continue
         }
         if (item.selectedId === 'NEW') {
+          const itemBrand = (item.brand || invoice.supplier_name || 'KAG').toUpperCase()
+          const isSanitary = itemBrand.includes('PUPA') || (categories.find(c => c.id === item.category_id)?.type === 'SANITARY')
+          const isAdhesive = itemBrand.includes('ROFF') || (categories.find(c => c.id === item.category_id)?.type === 'ADHESIVE')
+
           const newProd = {
             name: item.product_name,
             brand: item.brand || invoice.supplier_name || 'KAG',
             category_id: item.category_id || '',
             size: item.size || 'N/A',
-            finish: item.finish || 'Matte',
-            price: (item.category_id && item.category_id !== 'NO_CAT') ? '' : `₹${Math.round(item.rate * 1.35)}/sqft`,
-            hsn_code: item.hsn_code || '69072300',
+            finish: item.finish || (isSanitary ? 'Sanitary' : isAdhesive ? 'Chemical' : 'Matte'),
+            price: (item.category_id && item.category_id !== 'NO_CAT') ? '' : isSanitary ? `₹${Math.round(item.rate * 1.4)}` : `₹${Math.round(item.rate * 1.35)}/sqft`,
+            hsn_code: item.hsn_code || (isSanitary ? '69101000' : isAdhesive ? '32141000' : '69072300'),
             tax_percent: parseFloat(invoice.tax_percent) || 18,
             gst_percent: parseFloat(invoice.tax_percent) || 18,
             purchase_rate: parseFloat(item.rate) || 0,
             stock: item.quantity,
             reserved: 0,
             available: item.quantity,
-            min: 20,
-            unit: 'boxes'
+            min: isSanitary ? 2 : isAdhesive ? 5 : 20,
+            unit: isSanitary ? 'pcs' : isAdhesive ? 'bags' : 'boxes'
           }
           await fetch('/api/products', {
             method: 'POST',
@@ -1288,7 +1398,19 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Verify and Map Products to Showroom Inventory</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Verify and Map Products to Showroom Inventory</p>
+              {linkedItems.some(i => i.selectedId === 'NEW' && (!i.category_id || i.category_id === 'NO_CAT')) && (
+                <button
+                  type="button"
+                  onClick={handleAutoClassifyAll}
+                  className="rounded-lg bg-purple-50 border border-purple-200 text-purple-700 hover:bg-purple-100 px-3 py-1 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-purple-600" />
+                  Auto-Classify Brand Categories
+                </button>
+              )}
+            </div>
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
@@ -1327,25 +1449,36 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
                         </select>
 
                         {item.selectedId === 'NEW' && (
-                          <div className="mt-2 max-w-[280px]">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Map to Price List Category:</p>
+                          <div className="mt-2 max-w-[280px] space-y-1">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Category Classification:</p>
+                              {(!item.category_id || item.category_id === 'NO_CAT') && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAutoClassifyItem(idx)}
+                                  className="text-[9px] font-bold text-purple-600 hover:text-purple-800 flex items-center gap-0.5 cursor-pointer underline"
+                                >
+                                  ✨ Auto-Classify
+                                </button>
+                              )}
+                            </div>
                             <select
                               value={item.category_id || ''}
                               onChange={e => handleCategoryChange(idx, e.target.value)}
                               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600 outline-none focus:border-blue-400 focus:bg-white transition font-medium"
                             >
-                              <option value="">⚠️ Select Category Classification (MANDATORY) --</option>
+                              <option value="">⚠️ Select Classification (MANDATORY) --</option>
                               <option value="NO_CAT">🚫 No Category (Unclassified)</option>
-                              <optgroup label="WALL CLASSIFICATIONS">
-                                {categories.filter(c => c.type === 'WALL').map(c => (
-                                  <option key={c.id} value={c.id}>[{c.size}] {c.name}</option>
-                                ))}
-                              </optgroup>
-                              <optgroup label="FLOOR CLASSIFICATIONS">
-                                {categories.filter(c => c.type === 'FLOOR').map(c => (
-                                  <option key={c.id} value={c.id}>[{c.size}] {c.name}</option>
-                                ))}
-                              </optgroup>
+
+                              {brandGroups.map(bg => (
+                                <optgroup key={bg.brand} label={`🏷️ ${bg.brand} CLASSIFICATIONS`}>
+                                  {bg.cats.map(c => (
+                                    <option key={c.id} value={c.id}>
+                                      [{c.brand || bg.brand}] {c.size ? `[${c.size}] ` : ''}{c.name} (MRP: ₹{c.mrp})
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ))}
                             </select>
                           </div>
                         )}

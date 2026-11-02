@@ -992,9 +992,91 @@ app.put('/api/categories/:id', (req, res) => {
   }
 })
 
-// ─── GET /api/pricing-settings ───────────────────────────────────────────────────
+// ─── GET & POST /api/pricing-settings ───────────────────────────────────────────
 app.get('/api/pricing-settings', (req, res) => {
   res.json(getPricingSettings())
+})
+
+app.post('/api/pricing-settings', (req, res) => {
+  const settings = getPricingSettings()
+  const { brand = 'ALL', discount_percentage } = req.body
+  const pct = parseFloat(discount_percentage || 10)
+
+  if (!settings.brand_discounts) {
+    settings.brand_discounts = { KAG: 10, PUPA: 20, ROFF: 15 }
+  }
+
+  if (brand === 'ALL') {
+    settings.discount_percentage = pct
+    Object.keys(settings.brand_discounts).forEach(k => {
+      settings.brand_discounts[k] = pct
+    })
+  } else {
+    settings.brand_discounts[brand.toUpperCase()] = pct
+  }
+
+  savePricingSettings(settings)
+
+  // Update local categories
+  const categories = getLocalCategories()
+  const updatedCategories = categories.map(c => {
+    const cBrand = (c.brand || 'KAG').toUpperCase()
+    if (brand !== 'ALL' && cBrand !== brand.toUpperCase()) return c
+
+    const mrp = parseFloat(c.mrp || 0)
+    const sqft = parseFloat(c.sqft_per_box || 1)
+    const online_price = Math.round(mrp * (1 - pct / 100))
+    const sqft_price = Math.round(online_price / sqft)
+    return {
+      ...c,
+      discount_pct: pct,
+      online_price,
+      sqft_price
+    }
+  })
+  saveLocalCategories(updatedCategories)
+
+  res.json({ success: true, brand, discount_percentage: pct, brand_discounts: settings.brand_discounts })
+})
+
+// ─── POST /api/categories/auto-classify ─────────────────────────────────────────
+app.post('/api/categories/auto-classify', (req, res) => {
+  const { brand = 'PUPA', product_name = '', rate = 0, size = 'Standard' } = req.body
+  const targetBrand = brand.toUpperCase().trim()
+  const categories = getLocalCategories()
+
+  const existing = categories.find(c => (c.brand || 'KAG').toUpperCase() === targetBrand)
+  if (existing) {
+    return res.json({ ...existing, brand: targetBrand, created: false })
+  }
+
+  const isSanitary = targetBrand === 'PUPA' || product_name.toLowerCase().includes('closet') || product_name.toLowerCase().includes('basin')
+  const isAdhesive = targetBrand === 'ROFF' || product_name.toLowerCase().includes('bond')
+
+  const catType = isSanitary ? 'SANITARY' : isAdhesive ? 'ADHESIVE' : 'FLOOR'
+  const catName = isSanitary ? 'Pupa Sanitaryware & Bathware' : isAdhesive ? 'Roff Adhesives & Grouts' : `${targetBrand} Products`
+  const discountPct = isSanitary ? 20 : isAdhesive ? 15 : 10
+  const mrp = rate > 0 ? Math.round(rate * 1.4) : 1500
+  const onlinePrice = Math.round(mrp * (1 - discountPct / 100))
+
+  const newCat = {
+    id: `${targetBrand}_${catType.slice(0, 3)}_${Date.now().toString().slice(-4)}`,
+    brand: targetBrand,
+    size: size,
+    name: catName,
+    type: catType,
+    sqft_per_box: 1,
+    pcs_per_box: 1,
+    weight_per_box: 0,
+    mrp: mrp,
+    online_price: onlinePrice,
+    sqft_price: onlinePrice,
+    discount_pct: discountPct
+  }
+
+  categories.push(newCat)
+  saveLocalCategories(categories)
+  res.status(201).json({ ...newCat, created: true })
 })
 
 // ─── GET /api/staff ─────────────────────────────────────────────────────────────

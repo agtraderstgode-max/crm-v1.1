@@ -294,16 +294,15 @@ export function ProductsPage() {
                 >
                   <option value="">None (Custom Pricing / Manual Entry)</option>
                   <option value="NO_CAT">🚫 No Category (Unclassified)</option>
-                  <optgroup label="WALL CLASSIFICATIONS">
-                    {categories.filter(c => c.type === 'WALL').map(c => (
-                      <option key={c.id} value={c.id}>[{c.size}] {c.name} (MRP: ₹{c.mrp})</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="FLOOR CLASSIFICATIONS">
-                    {categories.filter(c => c.type === 'FLOOR').map(c => (
-                      <option key={c.id} value={c.id}>[{c.size}] {c.name} (MRP: ₹{c.mrp})</option>
-                    ))}
-                  </optgroup>
+                  {Array.from(new Set(categories.map(c => (c.brand || 'KAG').toUpperCase()))).map(b => (
+                    <optgroup key={b} label={`🏷️ ${b} CLASSIFICATIONS`}>
+                      {categories.filter(c => (c.brand || 'KAG').toUpperCase() === b).map(c => (
+                        <option key={c.id} value={c.id}>
+                          [{c.brand || b}] {c.size ? `[${c.size}] ` : ''}{c.name} (MRP: ₹{c.mrp})
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
                 <p className="text-[10px] text-slate-400 mt-1">
                   Mapping to a category links this product's selling price, sq.ft, and packaging directly to the master company list.
