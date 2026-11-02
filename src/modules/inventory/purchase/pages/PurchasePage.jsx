@@ -6,8 +6,9 @@ import { cn, fmtDate } from '@/lib/utils'
 
 // Levenshtein similarity metric for fuzzy matching
 function getSimilarity(s1, s2) {
-  let longer = s1.toLowerCase()
-  let shorter = s2.toLowerCase()
+  if (!s1 || !s2) return 0
+  let longer = String(s1).toLowerCase().trim()
+  let shorter = String(s2).toLowerCase().trim()
   if (longer.length < shorter.length) {
     let temp = longer
     longer = shorter
@@ -38,21 +39,65 @@ function getSimilarity(s1, s2) {
   return (longerLength - costs[shorter.length]) / parseFloat(longerLength)
 }
 
+function extractDimension(rawSize) {
+  if (!rawSize) return ''
+  const str = String(rawSize).toUpperCase().trim()
+  const dimMatch = str.match(/(\d+)\s*[X*x]\s*(\d+)/)
+  if (dimMatch) {
+    const d1 = parseInt(dimMatch[1], 10)
+    const d2 = parseInt(dimMatch[2], 10)
+    const min = Math.min(d1, d2)
+    const max = Math.max(d1, d2)
+    return `${min}X${max}`
+  }
+  const ftMatch = str.match(/(\d+)\s*(?:FEET|FT)/)
+  if (ftMatch) return `${ftMatch[1]}FEET`
+  return str.replace(/[^A-Z0-9]/g, '')
+}
+
+function isSizeCompatible(itemSize, prodSize) {
+  if (!itemSize || !prodSize) return true
+  const dim1 = extractDimension(itemSize)
+  const dim2 = extractDimension(prodSize)
+  if (dim1 && dim2) {
+    if (dim1 === dim2) return true
+    if (dim1.includes(dim2) || dim2.includes(dim1)) return true
+    return false
+  }
+  const s1 = String(itemSize).toLowerCase().replace(/[^a-z0-9]/g, '')
+  const s2 = String(prodSize).toLowerCase().replace(/[^a-z0-9]/g, '')
+  return s1 === s2 || s1.includes(s2) || s2.includes(s1)
+}
+
+function normalizeName(name) {
+  if (!name) return ''
+  return String(name).toUpperCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 function findBestMatch(item, productsList) {
+  if (!item || !item.product_name || !Array.isArray(productsList) || productsList.length === 0) return null
+
   let bestProd = null
   let maxScore = 0
-  
-  const itemSizeNorm = item.size ? String(item.size).toLowerCase().replace(/\s+/g, '') : ''
+  const normItemName = normalizeName(item.product_name)
 
   productsList.forEach(p => {
-    if (itemSizeNorm && p.size) {
-      const pSizeNorm = String(p.size).toLowerCase().replace(/\s+/g, '')
-      if (itemSizeNorm !== pSizeNorm) {
-        return // skip: sizes are different
-      }
-    }
+    const normProdName = normalizeName(p.name)
+    const normProdId = normalizeName(p.id)
     
-    const score = Math.max(getSimilarity(item.product_name, p.name), getSimilarity(item.product_name, p.id))
+    // Check size compatibility: e.g. "12X12 PARK" is compatible with "12X12"
+    const sizeOk = isSizeCompatible(item.size, p.size)
+    if (!sizeOk) return // Skip completely mismatched sizes (e.g. 12x12 vs 16x16)
+
+    let score = 0
+    if (normItemName === normProdName || normItemName === normProdId) {
+      score = 1.0
+    } else if (normProdName && (normProdName.includes(normItemName) || normItemName.includes(normProdName))) {
+      score = 0.95
+    } else {
+      score = Math.max(getSimilarity(normItemName, normProdName), getSimilarity(normItemName, normProdId))
+    }
+
     if (score > maxScore) {
       maxScore = score
       bestProd = p
@@ -1026,9 +1071,18 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
   }, [isOpen])
 
   useEffect(() => {
-    if (isOpen && invoice && categories.length > 0) {
+    if (isOpen && invoice) {
       const initialLinks = (invoice.items || []).map(item => {
-        const matchedCatId = findBestCategoryMatch(item, categories)
+        let selId = item.selectedId || 'NEW'
+        let score = item.matchScore || 0
+        if ((!selId || selId === 'NEW') && Array.isArray(products) && products.length > 0) {
+          const matched = findBestMatch(item, products)
+          if (matched) {
+            selId = matched.product.id
+            score = matched.score
+          }
+        }
+        const matchedCatId = categories && categories.length > 0 ? findBestCategoryMatch(item, categories) : ''
 
         return {
           product_name: item.product_name,
@@ -1039,29 +1093,14 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
           amount: parseFloat(item.amount) || (parseInt(item.quantity) * parseFloat(item.rate)) || 0,
           size: item.size || '',
           finish: item.finish || '',
-          selectedId: item.selectedId || 'NEW',
+          selectedId: selId,
           category_id: matchedCatId,
-          matchScore: item.matchScore || 0
+          matchScore: score
         }
       })
       setLinkedItems(initialLinks)
-    } else if (isOpen && invoice) {
-      const initialLinks = (invoice.items || []).map(item => ({
-        product_name: item.product_name,
-        brand: item.brand || '',
-        hsn_code: item.hsn_code || '69072300',
-        quantity: parseInt(item.quantity) || 0,
-        rate: parseFloat(item.rate) || 0,
-        amount: parseFloat(item.amount) || (parseInt(item.quantity) * parseFloat(item.rate)) || 0,
-        size: item.size || '',
-        finish: item.finish || '',
-        selectedId: item.selectedId || 'NEW',
-        category_id: '',
-        matchScore: item.matchScore || 0
-      }))
-      setLinkedItems(initialLinks)
     }
-  }, [isOpen, invoice, categories])
+  }, [isOpen, invoice, categories, products])
 
   const handleLinkChange = (index, val) => {
     setLinkedItems(prev => {
