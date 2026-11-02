@@ -3,8 +3,10 @@
  */
 
 export const AI_MODELS = {
-  GEMINI_DEFAULT: 'gemini-2.5-flash',
-  GEMINI_PRO: 'gemini-2.5-pro',
+  GEMINI_DEFAULT: 'gemini-3.8-flash',
+  GEMINI_FLASH_2: 'gemini-2.0-flash',
+  GEMINI_FLASH_15: 'gemini-1.5-flash',
+  GEMINI_PRO: 'gemini-1.5-pro',
   MISTRAL_DEFAULT: 'ministral-8b-latest',
   MISTRAL_SMALL: 'mistral-small-latest'
 }

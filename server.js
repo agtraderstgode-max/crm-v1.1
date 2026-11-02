@@ -1382,6 +1382,75 @@ function cleanDate(val) {
   return str
 }
 
+function safeJsonParse(raw) {
+  if (!raw || typeof raw !== 'string') return {}
+
+  let text = raw.trim()
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+
+  const firstBrace = text.indexOf('{')
+  if (firstBrace !== -1) {
+    const lastBrace = text.lastIndexOf('}')
+    if (lastBrace > firstBrace) {
+      text = text.substring(firstBrace, lastBrace + 1)
+    } else {
+      text = text.substring(firstBrace)
+    }
+  }
+
+  const removeTrailingCommas = (str) => str.replace(/,(\s*[}\]])/g, '$1')
+
+  try {
+    return JSON.parse(text)
+  } catch (e1) {
+    try {
+      return JSON.parse(removeTrailingCommas(text))
+    } catch (e2) {
+      let cleaned = removeTrailingCommas(text)
+      cleaned = cleaned.replace(/,\s*"[^"]*":?\s*[^,}\]]*$/, '')
+      cleaned = cleaned.replace(/,\s*$/, '')
+
+      let openBraces = 0
+      let openBrackets = 0
+      let inString = false
+      let escape = false
+
+      for (let i = 0; i < cleaned.length; i++) {
+        const char = cleaned[i]
+        if (char === '\\' && !escape) {
+          escape = true
+          continue
+        }
+        if (char === '"' && !escape) {
+          inString = !inString
+        } else if (!inString) {
+          if (char === '{') openBraces++
+          else if (char === '}') openBraces = Math.max(0, openBraces - 1)
+          else if (char === '[') openBrackets++
+          else if (char === ']') openBrackets = Math.max(0, openBrackets - 1)
+        }
+        escape = false
+      }
+
+      while (openBrackets > 0) {
+        cleaned += ']'
+        openBrackets--
+      }
+      while (openBraces > 0) {
+        cleaned += '}'
+        openBraces--
+      }
+
+      try {
+        return JSON.parse(removeTrailingCommas(cleaned))
+      } catch (e3) {
+        console.warn('safeJsonParse repair failed:', e3.message)
+        throw e1
+      }
+    }
+  }
+}
+
 // ─── POST /api/upload-invoice ───────────────────────────────────────────────────
 app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
   try {
@@ -1560,7 +1629,7 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
               { role: 'system', content: systemPromptText },
               { role: 'user', content: userContent }
             ],
-            max_tokens: 3000,
+            max_tokens: 8192,
             response_format: { type: 'json_object' }
           })
         });
@@ -1578,7 +1647,7 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
         throw new Error('Could not extract text from invoice using Mistral API.');
       }
 
-      const parsed = JSON.parse(contentText);
+      const parsed = safeJsonParse(contentText);
 
       const cleanedResult = {
         invoice_no: parsed.invoice_no || 'N/A',
@@ -1617,7 +1686,8 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
     }
 
     const apiKey = req.headers['x-gemini-key'] || process.env.GEMINI_API_KEY
-    const modelName = req.headers['x-gemini-model'] || 'gemini-2.5-flash'
+    let modelName = req.headers['x-gemini-model'] || 'gemini-3.8-flash'
+    if (modelName.startsWith('gemini-2.5')) modelName = 'gemini-3.8-flash'
     if (!apiKey) {
       return res.status(400).json({ error: 'Gemini API Key is missing. Please configure it in Settings.' })
     }
@@ -1741,7 +1811,7 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
     const text = response.text.trim()
     console.log(`✅ Gemini response:`, text)
 
-    const invoiceData = JSON.parse(text)
+    const invoiceData = safeJsonParse(text)
 
     // Check for duplicate invoice in history
     const localInvoices = getLocalInvoices()

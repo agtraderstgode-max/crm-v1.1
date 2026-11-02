@@ -223,7 +223,11 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
   const [scanResult, setScanResult] = useState(null)
   const [provider, setProvider] = useState(() => localStorage.getItem('gemini_provider') || 'mistral')
   const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('gemini_api_key') || '')
-  const [geminiModel, setGeminiModel] = useState(() => localStorage.getItem('gemini_model') || 'gemini-2.5-flash')
+  const [geminiModel, setGeminiModel] = useState(() => {
+    const saved = localStorage.getItem('gemini_model')
+    if (!saved || saved.startsWith('gemini-2.5')) return 'gemini-3.8-flash'
+    return saved
+  })
   const [mistralKey, setMistralKey] = useState(() => localStorage.getItem('mistral_api_key') || DEFAULT_MISTRAL_KEY)
   const [testingMistral, setTestingMistral] = useState(false)
   const [mistralTestStatus, setMistralTestStatus] = useState(null)
@@ -286,7 +290,12 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
     const prov = localStorage.getItem('gemini_provider') || provider || 'google'
     const gKey = (localStorage.getItem('gemini_api_key') || geminiKey || '').trim()
     const mKey = (localStorage.getItem('mistral_api_key') || mistralKey || DEFAULT_MISTRAL_KEY).trim()
-    const gModel = localStorage.getItem('gemini_model') || geminiModel || 'gemini-2.5-flash'
+    let gModel = localStorage.getItem('gemini_model') || geminiModel || 'gemini-3.8-flash'
+    if (gModel.startsWith('gemini-2.5')) {
+      gModel = 'gemini-3.8-flash'
+      localStorage.setItem('gemini_model', gModel)
+      setGeminiModel(gModel)
+    }
 
     if (prov === 'google' && !gKey) {
       setError('Please configure your Gemini API Key in the settings block below before scanning.')
@@ -503,8 +512,10 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                     onChange={e => setGeminiModel(e.target.value)}
                     className="rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-blue-400 font-semibold"
                   >
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Free/Fast)</option>
-                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (Powerful)</option>
+                    <option value="gemini-3.8-flash">Gemini 3.8 Flash (Latest / Fast)</option>
+                    <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Powerful)</option>
                   </select>
                   <button
                     onClick={handleSaveKey}

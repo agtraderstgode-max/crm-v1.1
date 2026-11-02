@@ -36,6 +36,76 @@ function cleanDate(val) {
   return str
 }
 
+export function safeJsonParse(raw) {
+  if (!raw || typeof raw !== 'string') return {}
+
+  let text = raw.trim()
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+
+  const firstBrace = text.indexOf('{')
+  if (firstBrace !== -1) {
+    const lastBrace = text.lastIndexOf('}')
+    if (lastBrace > firstBrace) {
+      text = text.substring(firstBrace, lastBrace + 1)
+    } else {
+      text = text.substring(firstBrace)
+    }
+  }
+
+  const removeTrailingCommas = (str) => str.replace(/,(\s*[}\]])/g, '$1')
+
+  try {
+    return JSON.parse(text)
+  } catch (e1) {
+    try {
+      return JSON.parse(removeTrailingCommas(text))
+    } catch (e2) {
+      // LLM truncated mid-stream or has dangling comma/property
+      let cleaned = removeTrailingCommas(text)
+      cleaned = cleaned.replace(/,\s*"[^"]*":?\s*[^,}\]]*$/, '')
+      cleaned = cleaned.replace(/,\s*$/, '')
+
+      let openBraces = 0
+      let openBrackets = 0
+      let inString = false
+      let escape = false
+
+      for (let i = 0; i < cleaned.length; i++) {
+        const char = cleaned[i]
+        if (char === '\\' && !escape) {
+          escape = true
+          continue
+        }
+        if (char === '"' && !escape) {
+          inString = !inString
+        } else if (!inString) {
+          if (char === '{') openBraces++
+          else if (char === '}') openBraces = Math.max(0, openBraces - 1)
+          else if (char === '[') openBrackets++
+          else if (char === ']') openBrackets = Math.max(0, openBrackets - 1)
+        }
+        escape = false
+      }
+
+      while (openBrackets > 0) {
+        cleaned += ']'
+        openBrackets--
+      }
+      while (openBraces > 0) {
+        cleaned += '}'
+        openBraces--
+      }
+
+      try {
+        return JSON.parse(removeTrailingCommas(cleaned))
+      } catch (e3) {
+        console.warn('safeJsonParse repair failed:', e3.message)
+        throw e1
+      }
+    }
+  }
+}
+
 // ─── MAPPERS ─────────────────────────────────────────────────────────────────
 const mapStaffFromSupabase = (s) => ({
   id: s.id,
@@ -1337,7 +1407,10 @@ function getQuotationSqft(cat, customMap = {}) {
       const invoiceSystemPrompt = `
 You are an expert purchase tax invoice parser. Analyze the uploaded invoice image or document.
 Identify and extract the following details and return ONLY a valid JSON object matching the requested schema.
-Do not include markdown tags, comments, or wrappers. Just return the raw JSON object.
+Strict rules:
+- Return ONLY the raw valid JSON object without markdown fences, comments, or extra text.
+- Never output trailing commas before } or ].
+- Enclose all keys and string values in double quotes.
 
 Schema:
 {
@@ -1442,7 +1515,7 @@ Schema:
               { role: 'system', content: invoiceSystemPrompt },
               { role: 'user', content: userContent }
             ],
-            max_tokens: 3000,
+            max_tokens: 8192,
             response_format: { type: 'json_object' }
           })
         })
@@ -1457,7 +1530,10 @@ Schema:
       } else {
         // Google Gemini
         const geminiKey = (getHeader('x-gemini-key') || localStorage.getItem('gemini_api_key') || '').trim()
-        const geminiModel = getHeader('x-gemini-model') || localStorage.getItem('gemini_model') || 'gemini-2.5-flash'
+        let geminiModel = getHeader('x-gemini-model') || localStorage.getItem('gemini_model') || 'gemini-3.8-flash'
+        if (geminiModel.startsWith('gemini-2.5')) {
+          geminiModel = 'gemini-3.8-flash'
+        }
         if (!geminiKey) {
           return jsonResponse({ error: 'Gemini API Key is missing. Please configure it in settings.' }, 400)
         }
@@ -1476,7 +1552,8 @@ Schema:
               }
             ],
             generationConfig: {
-              responseMimeType: 'application/json'
+              responseMimeType: 'application/json',
+              maxOutputTokens: 8192
             }
           })
         })
@@ -1494,12 +1571,7 @@ Schema:
         throw new Error('Could not extract text from invoice.')
       }
 
-      // Parse JSON
-      let cleanJson = contentText.trim()
-      if (cleanJson.startsWith('```json')) cleanJson = cleanJson.replace(/^```json/, '').replace(/```$/, '').trim()
-      else if (cleanJson.startsWith('```')) cleanJson = cleanJson.replace(/^```/, '').replace(/```$/, '').trim()
-
-      const parsed = JSON.parse(cleanJson)
+      const parsed = safeJsonParse(contentText)
 
       const cleanedResult = {
         invoice_no: parsed.invoice_no || 'N/A',
