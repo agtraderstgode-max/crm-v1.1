@@ -332,7 +332,7 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
   }
 
   const uploadAndScan = (fileToScan) => {
-    const prov = localStorage.getItem('gemini_provider') || provider || 'google'
+    const prov = provider || localStorage.getItem('gemini_provider') || 'google'
     const gKey = (localStorage.getItem('gemini_api_key') || geminiKey || '').trim()
     const mKey = (localStorage.getItem('mistral_api_key') || mistralKey || DEFAULT_MISTRAL_KEY).trim()
     let gModel = localStorage.getItem('gemini_model') || geminiModel || 'gemini-3.8-flash'
@@ -365,10 +365,11 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
     const headers = {
       'x-provider': prov
     }
-    if (prov === 'google') {
+    if (gKey) {
       headers['x-gemini-key'] = gKey
       headers['x-gemini-model'] = gModel
-    } else {
+    }
+    if (mKey) {
       headers['x-mistral-key'] = mKey
     }
 
@@ -525,7 +526,10 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                     name="provider"
                     value="mistral"
                     checked={provider === 'mistral'}
-                    onChange={() => setProvider('mistral')}
+                    onChange={() => {
+                      setProvider('mistral')
+                      localStorage.setItem('gemini_provider', 'mistral')
+                    }}
                     className="text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
                   />
                   Mistral AI (Configured & Ready)
@@ -536,7 +540,10 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                     name="provider"
                     value="google"
                     checked={provider === 'google'}
-                    onChange={() => setProvider('google')}
+                    onChange={() => {
+                      setProvider('google')
+                      localStorage.setItem('gemini_provider', 'google')
+                    }}
                     className="text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
                   />
                   Google Gemini

@@ -1453,12 +1453,20 @@ Schema:
         let targetDataUri = fileDataUri
         let extractedPdfText = ''
 
+        const fileName = (file && file.name) || ''
+        const isPdf = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf') || String(fileDataUri).startsWith('data:application/pdf')
+
         // If PDF, extract embedded text; if text exists, use it directly!
-        if (mimeType === 'application/pdf') {
+        if (isPdf) {
           try {
             let pdfjsLib = await import('pdfjs-dist')
             if (pdfjsLib.default) pdfjsLib = pdfjsLib.default
-            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+            try {
+              const worker = new Worker('/pdf.worker.min.mjs', { type: 'module' })
+              pdfjsLib.GlobalWorkerOptions.workerPort = worker
+            } catch {
+              pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+            }
 
             const arrayBuffer = await file.arrayBuffer()
             const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) })
@@ -1499,34 +1507,71 @@ Schema:
             { type: 'image_url', image_url: targetDataUri }
           ]
         } else {
-          throw new Error('Unable to extract text or render PDF image for Mistral. Please upload invoice as PNG/JPG or switch provider to Google Gemini.')
+          // Automatic Seamless Fallback to Google Gemini for native PDF handling!
+          const fallbackGeminiKey = (getHeader('x-gemini-key') || localStorage.getItem('gemini_api_key') || '').trim()
+          if (fallbackGeminiKey) {
+            console.log('PDF detected for Mistral. Engaging native Gemini multimodal PDF parser...')
+            let geminiModel = getHeader('x-gemini-model') || localStorage.getItem('gemini_model') || 'gemini-3.8-flash'
+            if (geminiModel.startsWith('gemini-2.5')) geminiModel = 'gemini-3.8-flash'
+
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${fallbackGeminiKey}`
+            const geminiRes = await fetch(geminiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [
+                  {
+                    parts: [
+                      { inlineData: { data: base64Data, mimeType: 'application/pdf' } },
+                      { text: invoiceSystemPrompt }
+                    ]
+                  }
+                ],
+                generationConfig: {
+                  responseMimeType: 'application/json',
+                  maxOutputTokens: 8192
+                }
+              })
+            })
+
+            if (geminiRes.ok) {
+              const geminiData = await geminiRes.json()
+              contentText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
+            }
+          }
+
+          if (!contentText) {
+            throw new Error('Unable to extract text or render PDF image for Mistral. Please upload invoice as PNG/JPG or switch provider to Google Gemini.')
+          }
         }
 
-        // Call ministral-8b-latest Completions API
-        const visionRes = await fetch('https://api.mistral.ai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${mistralKey}`
-          },
-          body: JSON.stringify({
-            model: 'ministral-8b-latest',
-            messages: [
-              { role: 'system', content: invoiceSystemPrompt },
-              { role: 'user', content: userContent }
-            ],
-            max_tokens: 8192,
-            response_format: { type: 'json_object' }
+        if (!contentText) {
+          // Call ministral-8b-latest Completions API
+          const visionRes = await fetch('https://api.mistral.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${mistralKey}`
+            },
+            body: JSON.stringify({
+              model: 'ministral-8b-latest',
+              messages: [
+                { role: 'system', content: invoiceSystemPrompt },
+                { role: 'user', content: userContent }
+              ],
+              max_tokens: 8192,
+              response_format: { type: 'json_object' }
+            })
           })
-        })
 
-        if (!visionRes.ok) {
-          const errText = await visionRes.text()
-          throw new Error(`Mistral API error (${visionRes.status}): ${errText}`)
+          if (!visionRes.ok) {
+            const errText = await visionRes.text()
+            throw new Error(`Mistral API error (${visionRes.status}): ${errText}`)
+          }
+
+          const visionData = await visionRes.json()
+          contentText = visionData.choices?.[0]?.message?.content
         }
-
-        const visionData = await visionRes.json()
-        contentText = visionData.choices?.[0]?.message?.content
       } else {
         // Google Gemini
         const geminiKey = (getHeader('x-gemini-key') || localStorage.getItem('gemini_api_key') || '').trim()
