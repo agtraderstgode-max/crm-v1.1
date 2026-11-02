@@ -1438,31 +1438,60 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
         console.warn('Mistral OCR call error:', ocrErr.message);
       }
 
-      // 2. Direct Multimodal Vision with ministral-8b-latest (instant & works across all subscription tiers)
+      // 2. Direct Multimodal Vision or Text Extraction with ministral-8b-latest (instant & works across all subscription tiers)
       if (!contentText) {
-        console.log('🤖 Processing invoice with Mistral Multimodal Vision (ministral-8b-latest)...');
+        console.log('🤖 Processing invoice with Mistral (ministral-8b-latest)...');
         let imageBuffer = file.buffer;
         let mimeType = file.mimetype;
+        let extractedPdfText = '';
 
         if (file.mimetype === 'application/pdf') {
+          // Attempt 1: Extract digital PDF text via pdfjs
           try {
-            const tmpPdfPath = path.join(os.tmpdir(), `inv_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
-            const tmpThumbDir = os.tmpdir();
-            fs.writeFileSync(tmpPdfPath, file.buffer);
-            execSync(`qlmanage -t -s 1200 -o "${tmpThumbDir}" "${tmpPdfPath}"`, { stdio: 'ignore' });
-            const renderedPngPath = `${tmpPdfPath}.png`;
-            if (fs.existsSync(renderedPngPath)) {
-              imageBuffer = fs.readFileSync(renderedPngPath);
-              mimeType = 'image/png';
-              try { fs.unlinkSync(tmpPdfPath); fs.unlinkSync(renderedPngPath); } catch {}
+            const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+            const doc = await pdfjs.getDocument({ data: new Uint8Array(file.buffer) }).promise;
+            for (let p = 1; p <= Math.min(doc.numPages, 3); p++) {
+              const page = await doc.getPage(p);
+              const content = await page.getTextContent();
+              extractedPdfText += `--- PAGE ${p} ---\n` + content.items.map(i => i.str).join(' ') + '\n';
             }
-          } catch (renderErr) {
-            console.warn('qlmanage PDF thumbnail conversion failed:', renderErr.message);
+          } catch (textErr) {
+            console.warn('PDF text extraction error:', textErr.message);
+          }
+
+          // Attempt 2: If scanned PDF with no text, convert to PNG via macOS qlmanage
+          if (extractedPdfText.trim().length < 80) {
+            try {
+              const tmpPdfPath = path.join(os.tmpdir(), `inv_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
+              const tmpThumbDir = os.tmpdir();
+              fs.writeFileSync(tmpPdfPath, file.buffer);
+              execSync(`qlmanage -t -s 1200 -o "${tmpThumbDir}" "${tmpPdfPath}"`, { stdio: 'ignore' });
+              const renderedPngPath = `${tmpPdfPath}.png`;
+              if (fs.existsSync(renderedPngPath)) {
+                imageBuffer = fs.readFileSync(renderedPngPath);
+                mimeType = 'image/png';
+                try { fs.unlinkSync(tmpPdfPath); fs.unlinkSync(renderedPngPath); } catch {}
+              }
+            } catch (renderErr) {
+              console.warn('qlmanage PDF thumbnail conversion failed:', renderErr.message);
+            }
           }
         }
 
         const base64Data = imageBuffer.toString('base64');
         const dataUri = `data:${mimeType};base64,${base64Data}`;
+
+        let userContent = null;
+        if (extractedPdfText && extractedPdfText.trim().length >= 80) {
+          userContent = `Analyze the following purchase tax invoice text and extract all details according to the schema:\n\n${extractedPdfText}`;
+        } else if (dataUri && dataUri.startsWith('data:image/')) {
+          userContent = [
+            { type: 'text', text: 'Analyze this invoice document and extract all fields according to schema.' },
+            { type: 'image_url', image_url: dataUri }
+          ];
+        } else {
+          throw new Error('Unable to extract text or render PDF image for Mistral. Please upload invoice as PNG/JPG or switch provider to Google Gemini.');
+        }
 
         const visionResponse = await fetch('https://api.mistral.ai/v1/chat/completions', {
           method: 'POST',
@@ -1474,13 +1503,7 @@ app.post('/api/upload-invoice', upload.single('invoice'), async (req, res) => {
             model: 'ministral-8b-latest',
             messages: [
               { role: 'system', content: systemPromptText },
-              {
-                role: 'user',
-                content: [
-                  { type: 'text', text: 'Analyze this invoice document and extract all fields according to schema.' },
-                  { type: 'image_url', image_url: dataUri }
-                ]
-              }
+              { role: 'user', content: userContent }
             ],
             max_tokens: 3000,
             response_format: { type: 'json_object' }

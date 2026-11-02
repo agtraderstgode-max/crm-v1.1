@@ -1187,32 +1187,58 @@ Schema:
         }
 
         let targetDataUri = fileDataUri
+        let extractedPdfText = ''
 
-        // If PDF, render first page to image via canvas with pdfjs-dist
+        // If PDF, extract embedded text; if text exists, use it directly!
         if (mimeType === 'application/pdf') {
           try {
             let pdfjsLib = await import('pdfjs-dist')
             if (pdfjsLib.default) pdfjsLib = pdfjsLib.default
-            if (!pdfjsLib.GlobalWorkerOptions?.workerSrc) {
-              pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
-            }
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+
             const arrayBuffer = await file.arrayBuffer()
             const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) })
             const pdfDoc = await loadingTask.promise
-            const page = await pdfDoc.getPage(1)
-            const viewport = page.getViewport({ scale: 2.0 })
-            const canvas = document.createElement('canvas')
-            canvas.width = viewport.width
-            canvas.height = viewport.height
-            const ctx = canvas.getContext('2d')
-            await page.render({ canvasContext: ctx, viewport }).promise
-            targetDataUri = canvas.toDataURL('image/png')
+
+            // 1. Extract text from pages
+            for (let p = 1; p <= Math.min(pdfDoc.numPages, 3); p++) {
+              const page = await pdfDoc.getPage(p)
+              const content = await page.getTextContent()
+              const pageText = content.items.map(item => item.str).join(' ')
+              extractedPdfText += `--- PAGE ${p} ---\n${pageText}\n`
+            }
+
+            // 2. If scanned PDF without embedded text, render page 1 to PNG via canvas
+            if (extractedPdfText.trim().length < 80) {
+              const page = await pdfDoc.getPage(1)
+              const viewport = page.getViewport({ scale: 2.0 })
+              const canvas = document.createElement('canvas')
+              canvas.width = viewport.width
+              canvas.height = viewport.height
+              const ctx = canvas.getContext('2d')
+              await page.render({ canvasContext: ctx, viewport }).promise
+              targetDataUri = canvas.toDataURL('image/png')
+            }
           } catch (pdfErr) {
-            console.warn('PDF canvas render failed, using raw data URI:', pdfErr)
+            console.warn('PDF parsing in browser warning:', pdfErr)
           }
         }
 
-        // Call ministral-8b-latest Vision API
+        // Build user message content safely for Mistral API
+        let userContent = null
+
+        if (extractedPdfText && extractedPdfText.trim().length >= 80) {
+          userContent = `Analyze the following purchase tax invoice text and extract all details according to the schema:\n\n${extractedPdfText}`
+        } else if (targetDataUri && targetDataUri.startsWith('data:image/')) {
+          userContent = [
+            { type: 'text', text: 'Analyze this invoice document and extract all fields according to schema.' },
+            { type: 'image_url', image_url: targetDataUri }
+          ]
+        } else {
+          throw new Error('Unable to extract text or render PDF image for Mistral. Please upload invoice as PNG/JPG or switch provider to Google Gemini.')
+        }
+
+        // Call ministral-8b-latest Completions API
         const visionRes = await fetch('https://api.mistral.ai/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -1223,13 +1249,7 @@ Schema:
             model: 'ministral-8b-latest',
             messages: [
               { role: 'system', content: invoiceSystemPrompt },
-              {
-                role: 'user',
-                content: [
-                  { type: 'text', text: 'Analyze this invoice document and extract all fields according to schema.' },
-                  { type: 'image_url', image_url: targetDataUri }
-                ]
-              }
+              { role: 'user', content: userContent }
             ],
             max_tokens: 3000,
             response_format: { type: 'json_object' }
