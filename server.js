@@ -1243,12 +1243,44 @@ app.get('/api/invoices', (req, res) => {
 })
 
 // ─── POST /api/invoices ──────────────────────────────────────────────────────────
-app.post('/api/invoices', (req, res) => {
+app.post('/api/invoices', async (req, res) => {
   const newInvoice = req.body // { invoice_no, supplier_name, items_count, date }
   newInvoice.stock_status = newInvoice.stock_status || 'pending'
   const localInvoices = getLocalInvoices()
-  localInvoices.push(newInvoice)
+  const existingIdx = localInvoices.findIndex(i => i.invoice_no === newInvoice.invoice_no)
+  if (existingIdx !== -1) localInvoices[existingIdx] = newInvoice
+  else localInvoices.push(newInvoice)
   saveLocalInvoices(localInvoices)
+
+  if (supabase) {
+    try {
+      const stockStatus = newInvoice.stock_status || 'pending'
+      const mapped = {
+        id: newInvoice.id || newInvoice.invoice_no || `INV-${Date.now()}`,
+        invoice_no: newInvoice.invoice_no || '',
+        date: newInvoice.date ? (String(newInvoice.date).match(/^\d{4}-\d{2}-\d{2}/) ? newInvoice.date : null) : null,
+        supplier_name: newInvoice.supplier_name || '',
+        supplier_gstin: newInvoice.supplier_gstin || '',
+        supplier_phone: newInvoice.supplier_phone || '',
+        buyer_name: newInvoice.buyer_name || '',
+        buyer_gstin: newInvoice.buyer_gstin || '',
+        gross_amount: Number(newInvoice.gross_amount) || 0,
+        tax_percent: Number(newInvoice.tax_percent) || 0,
+        gst_amount: Number(newInvoice.gst_amount) || 0,
+        total_amount: Number(newInvoice.total_amount) || 0,
+        total_qty: Number(newInvoice.total_qty) || 0,
+        total_items: Number(newInvoice.total_items) || (newInvoice.items?.length || 0),
+        items: (newInvoice.items || []).map(it => ({
+          ...it,
+          _stock_status: stockStatus
+        }))
+      }
+      await supabase.from('purchase_invoices').upsert([mapped], { onConflict: 'id' })
+    } catch (err) {
+      console.warn('Supabase invoice sync warning:', err.message)
+    }
+  }
+
   res.status(201).json(newInvoice)
   console.log(`⚡ Saved invoice ${newInvoice.invoice_no} to history`)
 })

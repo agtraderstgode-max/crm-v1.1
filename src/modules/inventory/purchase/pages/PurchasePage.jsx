@@ -410,7 +410,8 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
       })
 
       if (!res.ok) {
-        throw new Error('Failed to save invoice reference.')
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Failed to save invoice reference.')
       }
 
       alert('🎉 Invoice imported and saved successfully!')

@@ -403,6 +403,57 @@ const mapReferralToSupabase = (p) => ({
   referredorders: p.referredOrders || []
 })
 
+const mapInvoiceToSupabase = (inv) => {
+  const stockStatus = inv.stock_status || inv.stockStatus || 'pending'
+  const items = (Array.isArray(inv.items) ? inv.items : []).map(item => ({
+    ...item,
+    _stock_status: item._stock_status || stockStatus
+  }))
+
+  return {
+    id: inv.id || inv.invoice_no || `INV-${Date.now()}`,
+    invoice_no: inv.invoice_no || '',
+    date: inv.date ? (String(inv.date).match(/^\d{4}-\d{2}-\d{2}/) ? inv.date : null) : null,
+    supplier_name: inv.supplier_name || '',
+    supplier_gstin: inv.supplier_gstin || '',
+    supplier_phone: inv.supplier_phone || '',
+    buyer_name: inv.buyer_name || '',
+    buyer_gstin: inv.buyer_gstin || '',
+    gross_amount: Number(inv.gross_amount) || 0,
+    tax_percent: Number(inv.tax_percent) || 0,
+    gst_amount: Number(inv.gst_amount) || 0,
+    total_amount: Number(inv.total_amount) || 0,
+    total_qty: Number(inv.total_qty) || 0,
+    total_items: Number(inv.total_items) || items.length,
+    items
+  }
+}
+
+const mapInvoiceFromSupabase = (row) => {
+  const items = Array.isArray(row.items) ? row.items : []
+  const stockStatus = items[0]?._stock_status || 'pending'
+
+  return {
+    id: row.id,
+    invoice_no: row.invoice_no,
+    date: row.date,
+    supplier_name: row.supplier_name,
+    supplier_gstin: row.supplier_gstin,
+    supplier_phone: row.supplier_phone,
+    buyer_name: row.buyer_name,
+    buyer_gstin: row.buyer_gstin,
+    gross_amount: Number(row.gross_amount) || 0,
+    tax_percent: Number(row.tax_percent) || 0,
+    gst_amount: Number(row.gst_amount) || 0,
+    total_amount: Number(row.total_amount) || 0,
+    total_qty: Number(row.total_qty) || 0,
+    total_items: Number(row.total_items) || items.length,
+    stock_status: stockStatus,
+    items,
+    created_at: row.created_at
+  }
+}
+
 // ─── SUPABASE API ROUTER ─────────────────────────────────────────────────────
 export async function handleApiRequest(url, options = {}) {
   const parsed = new URL(url, window.location.origin)
@@ -998,6 +1049,68 @@ function getQuotationSqft(cat, customMap = {}) {
     return jsonResponse(newPartner, 201)
   }
 
+  // ─── /api/invoices ─────────────────────────────────────────────────────────
+  if (pathname === '/api/invoices' && method === 'GET') {
+    const { data, error } = await supabase
+      .from('purchase_invoices')
+      .select('*')
+      .order('date', { ascending: false })
+    if (error) return jsonResponse({ error: error.message }, 500)
+    return jsonResponse((data || []).map(mapInvoiceFromSupabase))
+  }
+
+  if (pathname === '/api/invoices' && method === 'POST') {
+    const invoiceData = body || {}
+    const mapped = mapInvoiceToSupabase(invoiceData)
+    const { data, error } = await supabase
+      .from('purchase_invoices')
+      .upsert([mapped], { onConflict: 'id' })
+      .select()
+    if (error) {
+      console.error('Error saving invoice to Supabase:', error)
+      return jsonResponse({ error: error.message }, 500)
+    }
+    return jsonResponse(mapInvoiceFromSupabase(data?.[0] || mapped), 201)
+  }
+
+  const invoiceNoMatch = pathname.match(/^\/api\/invoices\/([^/]+)$/)
+  if (invoiceNoMatch) {
+    const invoiceNo = decodeURIComponent(invoiceNoMatch[1])
+    if (method === 'PUT') {
+      const { data: existing } = await supabase
+        .from('purchase_invoices')
+        .select('*')
+        .or(`invoice_no.eq."${invoiceNo}",id.eq."${invoiceNo}"`)
+        .limit(1)
+
+      const base = existing?.[0] ? mapInvoiceFromSupabase(existing[0]) : { invoice_no: invoiceNo }
+      const merged = { ...base, ...body }
+      const mapped = mapInvoiceToSupabase(merged)
+      mapped.id = existing?.[0]?.id || invoiceNo
+
+      const { data, error } = await supabase
+        .from('purchase_invoices')
+        .upsert([mapped], { onConflict: 'id' })
+        .select()
+
+      if (error) {
+        console.error('Error updating invoice in Supabase:', error)
+        return jsonResponse({ error: error.message }, 500)
+      }
+      return jsonResponse(mapInvoiceFromSupabase(data?.[0] || mapped))
+    }
+
+    if (method === 'DELETE') {
+      const { error } = await supabase
+        .from('purchase_invoices')
+        .delete()
+        .or(`invoice_no.eq."${invoiceNo}",id.eq."${invoiceNo}"`)
+
+      if (error) return jsonResponse({ error: error.message }, 500)
+      return jsonResponse({ success: true, message: `Invoice ${invoiceNo} deleted.` })
+    }
+  }
+
   // ─── /api/chat/messages ────────────────────────────────────────────────────
   if (pathname === '/api/chat/messages' && method === 'GET') {
     const { data, error } = await supabase.from('chat_messages').select('*').order('timestamp')
@@ -1340,7 +1453,7 @@ Schema:
       let isDuplicate = false
       try {
         const { data: dupData } = await supabase
-          .from('invoices')
+          .from('purchase_invoices')
           .select('invoice_no, supplier_name')
           .eq('invoice_no', cleanedResult.invoice_no)
         if (dupData && dupData.length > 0) isDuplicate = true
