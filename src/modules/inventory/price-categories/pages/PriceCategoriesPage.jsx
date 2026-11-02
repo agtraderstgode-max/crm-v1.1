@@ -3,6 +3,10 @@ import { Plus, Search, Edit, Trash2, X, Layers, Save, Building2, Tag, Percent } 
 import { cn } from '@/lib/utils'
 
 export function getDefaultQuotationSqft(cat) {
+  const type = (cat?.type || '').toUpperCase();
+  if (type === 'SANITARY' || type === 'ADHESIVE' || type === 'HARDWARE') {
+    return 1;
+  }
   if (cat.sqft_per_box_quotation != null && !isNaN(cat.sqft_per_box_quotation)) {
     return parseFloat(cat.sqft_per_box_quotation);
   }
@@ -23,6 +27,62 @@ export function getDefaultQuotationSqft(cat) {
     return 12.0;
   }
   return parseFloat(cat.sqft_per_box || 15.5);
+}
+
+export function isTileCategory(cat) {
+  const type = (cat?.type || '').toUpperCase()
+  if (type === 'SANITARY' || type === 'ADHESIVE' || type === 'HARDWARE') return false
+  if (type === 'WALL' || type === 'FLOOR') return true
+  const brand = (cat?.brand || '').toUpperCase()
+  if (brand === 'PUPA' || brand === 'ROFF') return false
+  return true
+}
+
+export function getPackagingDisplay(c) {
+  const type = (c?.type || '').toUpperCase()
+  const brand = (c?.brand || '').toUpperCase()
+  if (type === 'SANITARY' || brand === 'PUPA') {
+    return c.unit ? `1 ${c.unit}` : '1 Pc (Piece)'
+  }
+  if (type === 'ADHESIVE' || brand === 'ROFF') {
+    return c.unit ? `1 ${c.unit}` : '1 Bag (20kg)'
+  }
+  if (type === 'HARDWARE') {
+    return c.unit ? `1 ${c.unit}` : '1 Set'
+  }
+  return c.sqft_per_box ? `${c.sqft_per_box} sq.ft` : '15.5 sq.ft'
+}
+
+export function getQuotationUnitDisplay(c) {
+  const type = (c?.type || '').toUpperCase()
+  const brand = (c?.brand || '').toUpperCase()
+  if (type === 'SANITARY' || brand === 'PUPA') {
+    return `1 ${c.unit || 'Pc'}`
+  }
+  if (type === 'ADHESIVE' || brand === 'ROFF') {
+    return `1 ${c.unit || 'Bag'}`
+  }
+  if (type === 'HARDWARE') {
+    return `1 ${c.unit || 'Set'}`
+  }
+  const sqft = c.sqft_per_box_quotation != null ? c.sqft_per_box_quotation : getDefaultQuotationSqft(c)
+  return `${sqft} sq.ft`
+}
+
+export function getRateDisplay(c) {
+  const type = (c?.type || '').toUpperCase()
+  const brand = (c?.brand || '').toUpperCase()
+  if (type === 'SANITARY' || brand === 'PUPA') {
+    return `₹${c.online_price || 0}/${(c.unit || 'pc').toLowerCase()}`
+  }
+  if (type === 'ADHESIVE' || brand === 'ROFF') {
+    return `₹${c.online_price || 0}/${(c.unit || 'bag').toLowerCase()}`
+  }
+  if (type === 'HARDWARE') {
+    return `₹${c.online_price || 0}/${(c.unit || 'set').toLowerCase()}`
+  }
+  const rate = c.sqft_price || Math.round((c.online_price || 0) / (c.sqft_per_box || 1))
+  return `₹${rate}/sqft`
 }
 
 export function PriceCategoriesPage() {
@@ -50,6 +110,7 @@ export function PriceCategoriesPage() {
     size: '',
     name: '',
     type: 'FLOOR',
+    unit: 'Boxes',
     sqft_per_box: 15.5,
     sqft_per_box_quotation: 16,
     pcs_per_box: 4,
@@ -136,15 +197,18 @@ export function PriceCategoriesPage() {
     setSelectedCategory(null)
     const initialBrand = selectedBrand !== 'ALL' ? selectedBrand : 'KAG'
     setCustomBrandInput(false)
+    const isSan = initialBrand === 'PUPA'
+    const isAdh = initialBrand === 'ROFF'
     setForm({
       id: '',
       brand: initialBrand,
       size: '',
       name: '',
-      type: initialBrand === 'PUPA' ? 'SANITARY' : initialBrand === 'ROFF' ? 'ADHESIVE' : 'FLOOR',
-      sqft_per_box: initialBrand === 'PUPA' || initialBrand === 'ROFF' ? 1 : 15.5,
-      sqft_per_box_quotation: initialBrand === 'PUPA' || initialBrand === 'ROFF' ? 1 : 16,
-      pcs_per_box: initialBrand === 'PUPA' ? 1 : 4,
+      type: isSan ? 'SANITARY' : isAdh ? 'ADHESIVE' : 'FLOOR',
+      unit: isSan ? 'Pcs' : isAdh ? 'Bag' : 'Box',
+      sqft_per_box: isSan || isAdh ? 1 : 15.5,
+      sqft_per_box_quotation: isSan || isAdh ? 1 : 16,
+      pcs_per_box: isSan || isAdh ? 1 : 4,
       weight_per_box: 0,
       mrp: 1000,
       discount_pct: brandDiscounts[initialBrand] !== undefined ? brandDiscounts[initialBrand] : discountPct
@@ -156,12 +220,16 @@ export function PriceCategoriesPage() {
     setSelectedCategory(cat)
     const catBrand = (cat.brand || 'KAG').toUpperCase()
     setCustomBrandInput(!['KAG', 'PUPA', 'ROFF'].includes(catBrand))
+    const isSan = catBrand === 'PUPA' || cat.type === 'SANITARY'
+    const isAdh = catBrand === 'ROFF' || cat.type === 'ADHESIVE'
+    const defaultUnit = isSan ? 'Pcs' : isAdh ? 'Bag' : 'Box'
     setForm({
       id: cat.id,
       brand: catBrand,
       size: cat.size || '',
       name: cat.name || '',
       type: cat.type || 'FLOOR',
+      unit: cat.unit || defaultUnit,
       sqft_per_box: cat.sqft_per_box || 1,
       sqft_per_box_quotation: cat.sqft_per_box_quotation != null ? cat.sqft_per_box_quotation : getDefaultQuotationSqft(cat),
       pcs_per_box: cat.pcs_per_box || 1,
@@ -242,7 +310,7 @@ export function PriceCategoriesPage() {
   const calculatedOnlinePrice = Math.round(currentMrp * (1 - currentDiscount / 100))
   const calculatedSqftPrice = Math.round(calculatedOnlinePrice / (currentSqft || 1))
 
-  const isSanitaryOrAdhesive = form.type === 'SANITARY' || form.type === 'ADHESIVE'
+  const isSanitaryOrAdhesive = form.type === 'SANITARY' || form.type === 'ADHESIVE' || form.type === 'HARDWARE' || form.brand === 'PUPA' || form.brand === 'ROFF'
 
   return (
     <div className="space-y-6">
@@ -406,16 +474,30 @@ export function PriceCategoriesPage() {
                   <th className="px-5 py-3.5">Size / Unit</th>
                   <th className="px-5 py-3.5">Classification Name / Description</th>
                   <th className="px-5 py-3.5">Type</th>
-                  <th className="px-5 py-3.5 whitespace-nowrap">Sq.Ft / Box</th>
+                  <th className="px-5 py-3.5 whitespace-nowrap">
+                    {selectedBrand === 'PUPA' || typeFilter === 'SANITARY' 
+                      ? 'Billing Unit' 
+                      : selectedBrand === 'ROFF' || typeFilter === 'ADHESIVE'
+                        ? 'Packaging Spec'
+                        : 'Sq.Ft / Box'}
+                  </th>
                   <th className="px-5 py-3.5 whitespace-nowrap text-center font-bold text-indigo-700 bg-indigo-50/60 border-x border-indigo-100">
                     Quotation Unit
                   </th>
-                  <th className="px-5 py-3.5 whitespace-nowrap">Pcs / Box</th>
+                  <th className="px-5 py-3.5 whitespace-nowrap">
+                    {selectedBrand === 'PUPA' || typeFilter === 'SANITARY' ? 'Pack Qty' : 'Pcs / Box'}
+                  </th>
                   <th className="px-5 py-3.5 text-orange-600 font-semibold">Wt (kg)</th>
                   <th className="px-5 py-3.5 text-slate-900 font-bold">MRP (₹)</th>
                   <th className="px-5 py-3.5">Online Price (₹)</th>
                   <th className="px-5 py-3.5 text-center">Linked Products</th>
-                  <th className="px-5 py-3.5 font-semibold text-blue-600">Unit Rate (₹)</th>
+                  <th className="px-5 py-3.5 font-semibold text-blue-600">
+                    {selectedBrand === 'PUPA' || typeFilter === 'SANITARY' 
+                      ? 'Piece Rate (₹)' 
+                      : selectedBrand === 'ROFF' || typeFilter === 'ADHESIVE'
+                        ? 'Bag Rate (₹)'
+                        : 'Unit Rate (₹)'}
+                  </th>
                   <th className="px-5 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -460,13 +542,13 @@ export function PriceCategoriesPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 font-medium">
-                        {c.sqft_per_box ? `${c.sqft_per_box} sq.ft` : '1 unit'}
+                        {getPackagingDisplay(c)}
                       </td>
                       <td className="px-5 py-3.5 text-center font-bold text-indigo-700 bg-indigo-50/20 border-x border-indigo-50">
-                        {c.sqft_per_box_quotation != null ? `${c.sqft_per_box_quotation} sq.ft` : `${getDefaultQuotationSqft(c)} sq.ft`}
+                        {getQuotationUnitDisplay(c)}
                       </td>
                       <td className="px-5 py-3.5 font-medium text-slate-500">
-                        {c.pcs_per_box || 1}
+                        {!isTileCategory(c) ? `${c.pcs_per_box || 1} ${c.unit || 'pc'}` : (c.pcs_per_box || 1)}
                       </td>
                       <td className="px-5 py-3.5 font-semibold text-orange-600">
                         {c.weight_per_box ? `${c.weight_per_box} kg` : '-'}
@@ -484,11 +566,7 @@ export function PriceCategoriesPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 font-bold text-blue-600">
-                        {c.type === 'SANITARY' 
-                          ? `₹${c.online_price}/pc`
-                          : c.type === 'ADHESIVE'
-                            ? `₹${c.online_price}/bag`
-                            : `₹${c.sqft_price || Math.round((c.online_price || 0) / (c.sqft_per_box || 1))}/sqft`}
+                        {getRateDisplay(c)}
                       </td>
                       <td className="px-5 py-3.5 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
@@ -593,7 +671,17 @@ export function PriceCategoriesPage() {
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Product Type</label>
                   <select
                     value={form.type}
-                    onChange={e => setForm({ ...form, type: e.target.value })}
+                    onChange={e => {
+                      const newType = e.target.value
+                      const newUnit = newType === 'SANITARY' ? 'Pcs' : newType === 'ADHESIVE' ? 'Bag' : newType === 'HARDWARE' ? 'Set' : 'Box'
+                      setForm({
+                        ...form,
+                        type: newType,
+                        unit: newUnit,
+                        sqft_per_box: (newType === 'SANITARY' || newType === 'ADHESIVE' || newType === 'HARDWARE') ? 1 : (form.sqft_per_box || 15.5),
+                        sqft_per_box_quotation: (newType === 'SANITARY' || newType === 'ADHESIVE' || newType === 'HARDWARE') ? 1 : (form.sqft_per_box_quotation || 16)
+                      })
+                    }}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="FLOOR">FLOOR TILES</option>
@@ -631,46 +719,83 @@ export function PriceCategoriesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">
-                    {isSanitaryOrAdhesive ? 'Units / Box or Bag' : 'Sq.Ft / Box'}
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="e.g. 15.5"
-                    value={form.sqft_per_box}
-                    onChange={e => setForm({ ...form, sqft_per_box: parseFloat(e.target.value) || 0 })}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
+              {isSanitaryOrAdhesive ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-purple-50/40 rounded-xl border border-purple-100">
+                  <div>
+                    <label className="block text-xs font-bold text-purple-900 uppercase tracking-wide mb-1">
+                      Billing & Quotation Unit
+                    </label>
+                    <select
+                      value={form.unit || (form.type === 'ADHESIVE' ? 'Bag' : 'Pcs')}
+                      onChange={e => setForm({ ...form, unit: e.target.value })}
+                      className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm font-bold text-purple-900 outline-none transition focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                    >
+                      <option value="Pcs">Pcs (Pieces - Individual)</option>
+                      <option value="Nos">Nos (Numbers)</option>
+                      <option value="Box">Box (Pack of Pieces)</option>
+                      <option value="Set">Set (Complete Bathroom Set / Fixture)</option>
+                      <option value="Bag">Bag (Adhesives 20kg / 40kg)</option>
+                      <option value="Bucket">Bucket / Tub</option>
+                      <option value="Can">Can / Bottle</option>
+                    </select>
+                    <p className="text-[10px] text-purple-600 font-medium mt-1">✓ Quantified in items/pieces (no sq.ft)</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-1">
+                      Items / Pieces per Pack
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="e.g. 1"
+                      value={form.pcs_per_box || 1}
+                      onChange={e => setForm({ ...form, pcs_per_box: parseInt(e.target.value) || 1 })}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-semibold"
+                      required
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">Default pieces per packaged carton</p>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-indigo-700 uppercase tracking-wide mb-1">
-                    {isSanitaryOrAdhesive ? 'Quotation Multiplier' : 'Sq.Ft / Box (Quotation)'}
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="e.g. 1"
-                    value={form.sqft_per_box_quotation !== undefined ? form.sqft_per_box_quotation : ''}
-                    onChange={e => setForm({ ...form, sqft_per_box_quotation: parseFloat(e.target.value) || 0 })}
-                    className="w-full rounded-lg border border-indigo-200 bg-indigo-50/30 px-3 py-2 text-sm font-bold text-indigo-900 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  />
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Sq.Ft / Box</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g. 15.5"
+                      value={form.sqft_per_box}
+                      onChange={e => setForm({ ...form, sqft_per_box: parseFloat(e.target.value) || 0 })}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-indigo-700 uppercase tracking-wide mb-1">
+                      Sq.Ft / Box (Quotation)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g. 16"
+                      value={form.sqft_per_box_quotation !== undefined ? form.sqft_per_box_quotation : ''}
+                      onChange={e => setForm({ ...form, sqft_per_box_quotation: parseFloat(e.target.value) || 0 })}
+                      className="w-full rounded-lg border border-indigo-200 bg-indigo-50/30 px-3 py-2 text-sm font-bold text-indigo-900 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Pieces per Box</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 4"
+                      value={form.pcs_per_box}
+                      onChange={e => setForm({ ...form, pcs_per_box: parseInt(e.target.value) || 0 })}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Pieces per Box / Unit</label>
-                  <input
-                    type="number"
-                    placeholder="e.g. 1"
-                    value={form.pcs_per_box}
-                    onChange={e => setForm({ ...form, pcs_per_box: parseInt(e.target.value) || 0 })}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-orange-500 uppercase tracking-wide mb-1">Weight (kg)</label>
@@ -732,7 +857,7 @@ export function PriceCategoriesPage() {
                   <input
                     type="text"
                     disabled
-                    value={isSanitaryOrAdhesive ? `₹${calculatedOnlinePrice}/unit` : `₹${calculatedSqftPrice}/sqft`}
+                    value={isSanitaryOrAdhesive ? `₹${calculatedOnlinePrice} / ${(form.unit || 'pc').toLowerCase()}` : `₹${calculatedSqftPrice}/sqft`}
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-blue-600"
                   />
                 </div>

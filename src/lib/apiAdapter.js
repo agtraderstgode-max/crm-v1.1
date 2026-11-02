@@ -894,9 +894,16 @@ function getQuotationSqft(cat, customMap = {}) {
       if (p.category_id && p.category_id !== 'NO_CAT') {
         const cat = categories.find(c => c.id === p.category_id)
         if (cat) {
+          const isSan = (cat.type === 'SANITARY') || brand.toUpperCase().includes('PUPA') || (cat.brand && cat.brand.toUpperCase() === 'PUPA')
+          const isAdh = (cat.type === 'ADHESIVE') || brand.toUpperCase().includes('ROFF') || (cat.brand && cat.brand.toUpperCase() === 'ROFF')
+          const isHard = (cat.type === 'HARDWARE')
+          const unit = p.unit || cat.unit || (isSan ? 'pcs' : isAdh ? 'bags' : isHard ? 'sets' : 'boxes')
+          const displayPrice = isSan ? `₹${cat.online_price}/pc` : isAdh ? `₹${cat.online_price}/bag` : isHard ? `₹${cat.online_price}/set` : `₹${cat.sqft_price}/sqft`
+
           return {
             ...p,
             brand,
+            unit,
             hsn_code,
             tax_percent,
             gst_percent,
@@ -904,10 +911,10 @@ function getQuotationSqft(cat, customMap = {}) {
             mrp: cat.mrp,
             online_price: cat.online_price,
             sqft_price: cat.sqft_price,
-            price: `₹${cat.sqft_price}/sqft`,
+            price: p.price || displayPrice,
             pcs_per_box: cat.pcs_per_box,
             sqft_per_box: cat.sqft_per_box,
-            sqft_per_box_quotation: getQuotationSqft(cat, customMap),
+            sqft_per_box_quotation: (isSan || isAdh || isHard) ? 1 : getQuotationSqft(cat, customMap),
             weight_per_box: cat.weight_per_box,
             category: cat.name
           }
@@ -1015,6 +1022,7 @@ function getQuotationSqft(cat, customMap = {}) {
     const { data: rawCats } = await supabase.from('categories').select('*').range(0, 4999)
     let customMap = {}
     let brandMap = {}
+    let unitMap = {}
     try {
       const { data: qSetting } = await supabase.from('settings').select('value').eq('key', 'category_quotation_sqft').maybeSingle()
       if (qSetting && qSetting.value) customMap = qSetting.value
@@ -1022,6 +1030,10 @@ function getQuotationSqft(cat, customMap = {}) {
     try {
       const { data: bSetting } = await supabase.from('settings').select('value').eq('key', 'category_brand_map').maybeSingle()
       if (bSetting && bSetting.value) brandMap = bSetting.value
+    } catch (e) {}
+    try {
+      const { data: uSetting } = await supabase.from('settings').select('value').eq('key', 'category_unit_map').maybeSingle()
+      if (uSetting && uSetting.value) unitMap = uSetting.value
     } catch (e) {}
 
     const enriched = (rawCats || []).map(c => {
@@ -1033,10 +1045,16 @@ function getQuotationSqft(cat, customMap = {}) {
         else if (uType === 'ADHESIVE' || uName.includes('ROFF')) b = 'ROFF'
         else b = 'KAG'
       }
+      const uType = (c.type || '').toUpperCase()
+      const isSanitaryOrAdh = uType === 'SANITARY' || uType === 'ADHESIVE' || uType === 'HARDWARE' || b === 'PUPA' || b === 'ROFF'
+      const defaultUnit = (uType === 'SANITARY' || b === 'PUPA') ? 'Pcs' : (uType === 'ADHESIVE' || b === 'ROFF') ? 'Bag' : uType === 'HARDWARE' ? 'Set' : 'Box'
+      const unit = unitMap[c.id] || c.unit || defaultUnit
+
       return {
         ...c,
         brand: b,
-        sqft_per_box_quotation: getQuotationSqft(c, customMap)
+        unit,
+        sqft_per_box_quotation: isSanitaryOrAdh ? 1 : getQuotationSqft(c, customMap)
       }
     })
     return jsonResponse(enriched)
@@ -1076,14 +1094,17 @@ function getQuotationSqft(cat, customMap = {}) {
     let catName = `${targetBrand} Sanitaryware & Fixtures`
     let mrpMultiplier = 1.40
     let discountPct = 20
+    let catUnit = 'Pcs'
 
     if (targetBrand === 'ROFF' || prodName.toLowerCase().includes('bond') || prodName.toLowerCase().includes('adhesive')) {
       catType = 'ADHESIVE'
       catName = `${targetBrand} Adhesives & Grouts`
       mrpMultiplier = 1.25
       discountPct = 15
+      catUnit = 'Bag'
     } else if (targetBrand === 'PUPA') {
       catType = 'SANITARY'
+      catUnit = 'Pcs'
       if (prodName.toLowerCase().includes('closet') || prodName.toLowerCase().includes('commode') || prodName.toLowerCase().includes('ewc')) {
         catName = 'Pupa Sanitary - One Piece & Wall Hung Closets'
       } else if (prodName.toLowerCase().includes('basin') || prodName.toLowerCase().includes('sink')) {
@@ -1124,9 +1145,21 @@ function getQuotationSqft(cat, customMap = {}) {
       }, { onConflict: 'key' })
     } catch (e) {}
 
+    try {
+      const { data: uSetting } = await supabase.from('settings').select('value').eq('key', 'category_unit_map').maybeSingle()
+      const uMap = (uSetting && uSetting.value) || {}
+      uMap[newCatId] = catUnit
+      await supabase.from('settings').upsert({
+        key: 'category_unit_map',
+        value: uMap,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'key' })
+    } catch (e) {}
+
     return jsonResponse({
       ...newCat,
       brand: targetBrand,
+      unit: catUnit,
       created: true
     }, 201)
   }
@@ -1168,6 +1201,19 @@ function getQuotationSqft(cat, customMap = {}) {
       } catch (e) {}
     }
 
+    if (body.unit) {
+      try {
+        const { data: uSetting } = await supabase.from('settings').select('value').eq('key', 'category_unit_map').maybeSingle()
+        const unitMap = (uSetting && uSetting.value) || {}
+        unitMap[catId] = body.unit
+        await supabase.from('settings').upsert({
+          key: 'category_unit_map',
+          value: unitMap,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' })
+      } catch (e) {}
+    }
+
     if (body.sqft_per_box_quotation !== undefined) {
       try {
         const { data: qSetting } = await supabase.from('settings').select('value').eq('key', 'category_quotation_sqft').maybeSingle()
@@ -1184,6 +1230,7 @@ function getQuotationSqft(cat, customMap = {}) {
     return jsonResponse({
       ...newCategory,
       brand: body.brand ? body.brand.toUpperCase().trim() : 'KAG',
+      unit: body.unit || (newCategory.type === 'SANITARY' ? 'Pcs' : newCategory.type === 'ADHESIVE' ? 'Bag' : 'Box'),
       sqft_per_box_quotation: body.sqft_per_box_quotation != null ? parseFloat(body.sqft_per_box_quotation) : getQuotationSqft(newCategory)
     }, 201)
   }
@@ -1225,6 +1272,19 @@ function getQuotationSqft(cat, customMap = {}) {
       } catch (e) {}
     }
 
+    if (body.unit) {
+      try {
+        const { data: uSetting } = await supabase.from('settings').select('value').eq('key', 'category_unit_map').maybeSingle()
+        const unitMap = (uSetting && uSetting.value) || {}
+        unitMap[id] = body.unit
+        await supabase.from('settings').upsert({
+          key: 'category_unit_map',
+          value: unitMap,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' })
+      } catch (e) {}
+    }
+
     if (body.sqft_per_box_quotation !== undefined) {
       try {
         const { data: qSetting } = await supabase.from('settings').select('value').eq('key', 'category_quotation_sqft').maybeSingle()
@@ -1243,6 +1303,7 @@ function getQuotationSqft(cat, customMap = {}) {
       id,
       ...updated,
       brand: body.brand ? body.brand.toUpperCase().trim() : 'KAG',
+      unit: body.unit || (updated.type === 'SANITARY' ? 'Pcs' : updated.type === 'ADHESIVE' ? 'Bag' : 'Box'),
       sqft_per_box_quotation: body.sqft_per_box_quotation != null ? parseFloat(body.sqft_per_box_quotation) : getQuotationSqft({ ...updated, id })
     })
   }

@@ -851,9 +851,16 @@ app.get('/api/products', (req, res) => {
     if (p.category_id && p.category_id !== 'NO_CAT') {
       const cat = categories.find(c => c.id === p.category_id)
       if (cat) {
+        const isSan = (cat.type === 'SANITARY') || brand.toUpperCase().includes('PUPA') || (cat.brand && cat.brand.toUpperCase() === 'PUPA')
+        const isAdh = (cat.type === 'ADHESIVE') || brand.toUpperCase().includes('ROFF') || (cat.brand && cat.brand.toUpperCase() === 'ROFF')
+        const isHard = (cat.type === 'HARDWARE')
+        const unit = p.unit || cat.unit || (isSan ? 'pcs' : isAdh ? 'bags' : isHard ? 'sets' : 'boxes')
+        const displayPrice = isSan ? `₹${cat.online_price}/pc` : isAdh ? `₹${cat.online_price}/bag` : isHard ? `₹${cat.online_price}/set` : `₹${cat.sqft_price}/sqft`
+
         return {
           ...p,
           brand,
+          unit,
           hsn_code,
           tax_percent,
           gst_percent,
@@ -861,10 +868,10 @@ app.get('/api/products', (req, res) => {
           mrp: cat.mrp,
           online_price: cat.online_price,
           sqft_price: cat.sqft_price,
-          price: `₹${cat.sqft_price}/sqft`,
+          price: p.price || displayPrice,
           pcs_per_box: cat.pcs_per_box,
           sqft_per_box: cat.sqft_per_box,
-          sqft_per_box_quotation: getQuotationSqft(cat),
+          sqft_per_box_quotation: (isSan || isAdh || isHard) ? 1 : getQuotationSqft(cat),
           weight_per_box: cat.weight_per_box,
           category: cat.name // map display category in UI
         }
@@ -1055,6 +1062,7 @@ app.post('/api/categories/auto-classify', (req, res) => {
 
   const catType = isSanitary ? 'SANITARY' : isAdhesive ? 'ADHESIVE' : 'FLOOR'
   const catName = isSanitary ? 'Pupa Sanitaryware & Bathware' : isAdhesive ? 'Roff Adhesives & Grouts' : `${targetBrand} Products`
+  const catUnit = isSanitary ? 'Pcs' : isAdhesive ? 'Bag' : 'Boxes'
   const discountPct = isSanitary ? 20 : isAdhesive ? 15 : 10
   const mrp = rate > 0 ? Math.round(rate * 1.4) : 1500
   const onlinePrice = Math.round(mrp * (1 - discountPct / 100))
@@ -1065,6 +1073,7 @@ app.post('/api/categories/auto-classify', (req, res) => {
     size: size,
     name: catName,
     type: catType,
+    unit: catUnit,
     sqft_per_box: 1,
     pcs_per_box: 1,
     weight_per_box: 0,

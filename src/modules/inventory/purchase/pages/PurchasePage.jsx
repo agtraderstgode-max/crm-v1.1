@@ -1422,17 +1422,24 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {linkedItems.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="px-4 py-3">
-                        <span className="font-bold text-slate-800 block text-xs">{item.product_name}</span>
-                        <span className="text-[10px] text-slate-400">
-                          Size: {item.size || 'N/A'} · Brand: {item.brand || 'N/A'} · HSN: {item.hsn_code}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-slate-700 text-xs">
-                        {item.quantity} boxes
-                      </td>
+                  {linkedItems.map((item, idx) => {
+                    const itemBrand = (item.brand || invoice.supplier_name || '').toUpperCase()
+                    const catObj = categories.find(c => c.id === item.category_id)
+                    const isSan = itemBrand.includes('PUPA') || (catObj && catObj.type === 'SANITARY')
+                    const isAdh = itemBrand.includes('ROFF') || (catObj && catObj.type === 'ADHESIVE')
+                    const unitLabel = item.unit || (isSan ? 'pcs' : isAdh ? 'bags' : 'boxes')
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/50">
+                        <td className="px-4 py-3">
+                          <span className="font-bold text-slate-800 block text-xs">{item.product_name}</span>
+                          <span className="text-[10px] text-slate-400">
+                            Size: {item.size || 'N/A'} · Brand: {item.brand || 'N/A'} · HSN: {item.hsn_code}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-slate-700 text-xs">
+                          {item.quantity} {unitLabel}
+                        </td>
                       <td className="px-4 py-3">
                         <select
                           value={item.selectedId}
@@ -1499,7 +1506,7 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
                         )}
                       </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>

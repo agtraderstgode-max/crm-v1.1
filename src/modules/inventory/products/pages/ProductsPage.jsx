@@ -186,7 +186,7 @@ export function ProductsPage() {
                         <div className="font-semibold text-slate-900">{p.price}</div>
                         {isLinked && (
                           <div className="text-[10px] text-slate-400 mt-0.5">
-                            MRP: ₹{p.mrp} | Box: ₹{p.online_price}
+                            MRP: ₹{p.mrp} | Net: ₹{p.online_price}{p.unit ? `/${p.unit.replace(/es$|s$/, '')}` : ''}
                           </div>
                         )}
                       </td>
@@ -282,12 +282,17 @@ export function ProductsPage() {
                   onChange={e => {
                     const catId = e.target.value;
                     const cat = categories.find(c => c.id === catId);
+                    const isSan = cat && (cat.type === 'SANITARY' || (cat.brand || '').toUpperCase().includes('PUPA'));
+                    const isAdh = cat && (cat.type === 'ADHESIVE' || (cat.brand || '').toUpperCase().includes('ROFF'));
+                    const catPrice = isSan ? `₹${cat.online_price}/pc` : isAdh ? `₹${cat.online_price}/bag` : cat ? `₹${cat.sqft_price}/sqft` : productForm.price;
+                    const catUnit = isSan ? 'pcs' : isAdh ? 'bags' : cat?.unit ? cat.unit.toLowerCase() : productForm.unit;
                     setProductForm({
                       ...productForm,
                       category_id: catId,
                       // Pre-fill size if mapping category
                       size: cat ? cat.size : productForm.size,
-                      price: cat ? `₹${cat.sqft_price}/sqft` : productForm.price
+                      price: catPrice,
+                      unit: catUnit
                     });
                   }}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
