@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react'
-import { Package, Plus, Search, Edit, X } from 'lucide-react'
+import { Package, Plus, Search, Edit, X, Layers } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { 
+  PRELOADED_UNITS, 
+  normalizeUnit, 
+  detectDefaultUnit, 
+  getUnitMeta, 
+  getUnitBadgeStyle 
+} from '@/lib/unitsConfig'
 
 export function ProductsPage() {
   const [products, setProducts] = useState([])
@@ -49,10 +57,10 @@ export function ProductsPage() {
     setProductForm({
       id: `SKU-${Date.now().toString().slice(-6)}`,
       name: '',
-      brand: 'Varmora',
+      brand: 'KAG',
       category_id: '',
       size: '',
-      finish: '',
+      finish: 'Glossy',
       stock: 0,
       unit: 'boxes',
       price: '₹0/sqft'
@@ -62,15 +70,16 @@ export function ProductsPage() {
 
   const handleOpenEditProduct = (prod) => {
     setSelectedProduct(prod)
+    const normalized = normalizeUnit(prod.unit)
     setProductForm({
       id: prod.id,
       name: prod.name,
-      brand: prod.brand || 'Custom',
+      brand: prod.brand || 'KAG',
       category_id: prod.category_id || '',
       size: prod.size || '',
       finish: prod.finish || '',
       stock: prod.stock || 0,
-      unit: prod.unit || 'boxes',
+      unit: normalized,
       price: prod.price || '₹0/sqft'
     })
     setIsProductModalOpen(true)
@@ -191,11 +200,19 @@ export function ProductsPage() {
                         )}
                       </td>
                       <td className="px-5 py-4">
-                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          p.stock < 20 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
-                        }`}>
-                          {p.stock} {p.unit || 'boxes'}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                            p.stock < 20 ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          }`}>
+                            {p.stock}
+                          </span>
+                          <span className={cn(
+                            "rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border",
+                            getUnitBadgeStyle(p.unit)
+                          )}>
+                            {getUnitMeta(p.unit).shortLabel}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-5 py-4 text-right">
                         <button
@@ -258,7 +275,11 @@ export function ProductsPage() {
                   <input
                     type="text"
                     value={productForm.brand}
-                    onChange={e => setProductForm({ ...productForm, brand: e.target.value })}
+                    onChange={e => {
+                      const brandVal = e.target.value
+                      const autoU = detectDefaultUnit({ brand: brandVal, name: productForm.name })
+                      setProductForm({ ...productForm, brand: brandVal, unit: autoU })
+                    }}
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
@@ -353,14 +374,23 @@ export function ProductsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Stock Unit</label>
-                  <input
-                    type="text"
-                    value={productForm.unit}
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">
+                    Measurement Unit (Preloaded)
+                  </label>
+                  <select
+                    value={normalizeUnit(productForm.unit)}
                     onChange={e => setProductForm({ ...productForm, unit: e.target.value })}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold outline-none transition focus:border-blue-500 cursor-pointer"
+                  >
+                    {PRELOADED_UNITS.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.fullName} — {u.category}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {getUnitMeta(productForm.unit).description}
+                  </p>
                 </div>
               </div>
 

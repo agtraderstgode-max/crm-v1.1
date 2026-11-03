@@ -836,6 +836,35 @@ function getQuotationSqft(cat) {
   return parseFloat(cat.sqft_per_box || 15.5)
 }
 
+const PRELOADED_UNITS = [
+  { id: 'boxes', label: 'Boxes (bxs)', fullName: 'Boxes (Tiles Carton)', shortLabel: 'Boxes', singular: 'Box', category: 'Tiles', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200', defaultFor: ['KAG', 'TILES', 'FLOOR', 'WALL'] },
+  { id: 'pcs', label: 'Pieces (pcs)', fullName: 'Pieces / Pcs (Sanitaryware & Fixtures)', shortLabel: 'Pcs', singular: 'Pc', category: 'Sanitaryware', badgeColor: 'bg-purple-50 text-purple-700 border-purple-200', defaultFor: ['PUPA', 'SANITARY', 'CLOSET', 'BASIN'] },
+  { id: 'bags', label: 'Bags (bags)', fullName: 'Bags (Tile Adhesive & Grout)', shortLabel: 'Bags', singular: 'Bag', category: 'Adhesives & Pastes', badgeColor: 'bg-amber-50 text-amber-700 border-amber-200', defaultFor: ['ROFF', 'ADHESIVE', 'PASTE', 'GROUT'] },
+  { id: 'sqft', label: 'Sq.Ft (sqft)', fullName: 'Square Feet (Tiles Area)', shortLabel: 'Sq.Ft', singular: 'Sq.Ft', category: 'Tiles Area', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { id: 'nos', label: 'Numbers (nos)', fullName: 'Numbers / Count (Nos)', shortLabel: 'Nos', singular: 'No', category: 'General Items', badgeColor: 'bg-sky-50 text-sky-700 border-sky-200' },
+  { id: 'sets', label: 'Sets (sets)', fullName: 'Sets (Combos & Kits)', shortLabel: 'Sets', singular: 'Set', category: 'Combos & Kits', badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { id: 'kg', label: 'Kilograms (kg)', fullName: 'Kilograms (Kg)', shortLabel: 'Kg', singular: 'Kg', category: 'Chemicals & Pastes', badgeColor: 'bg-teal-50 text-teal-700 border-teal-200' },
+  { id: 'ltr', label: 'Liters (ltr)', fullName: 'Liters (Ltr)', shortLabel: 'Ltr', singular: 'Ltr', category: 'Liquids & Chemicals', badgeColor: 'bg-cyan-50 text-cyan-700 border-cyan-200' }
+]
+
+function normalizeServerUnit(raw) {
+  if (!raw) return 'boxes'
+  const u = String(raw).trim().toLowerCase()
+  if (u.includes('pc') || u.includes('item')) return 'pcs'
+  if (u.includes('bag')) return 'bags'
+  if (u.includes('sqft') || u.includes('sq.ft') || u.includes('square')) return 'sqft'
+  if (u.includes('set')) return 'sets'
+  if (u.includes('no') || u.includes('num')) return 'nos'
+  if (u.includes('kg')) return 'kg'
+  if (u.includes('ltr') || u.includes('liter')) return 'ltr'
+  return 'boxes'
+}
+
+// ─── GET /api/units ─────────────────────────────────────────────────────────────
+app.get('/api/units', (req, res) => {
+  res.json(PRELOADED_UNITS)
+})
+
 // ─── GET /api/products ───────────────────────────────────────────────────────────
 app.get('/api/products', (req, res) => {
   const products = getLocalProducts()
@@ -843,57 +872,54 @@ app.get('/api/products', (req, res) => {
   
   const joined = products.map(p => {
     const brand = p.brand || 'KAG'
+    const brandUpper = brand.toUpperCase()
     const hsn_code = p.hsn_code || '69072300'
     const tax_percent = p.tax_percent != null ? p.tax_percent : 18
     const gst_percent = p.gst_percent != null ? p.gst_percent : 18
     const purchase_rate = p.purchase_rate != null ? p.purchase_rate : 0
 
-    if (p.category_id && p.category_id !== 'NO_CAT') {
-      const cat = categories.find(c => c.id === p.category_id)
-      if (cat) {
-        const isSan = (cat.type === 'SANITARY') || brand.toUpperCase().includes('PUPA') || (cat.brand && cat.brand.toUpperCase() === 'PUPA')
-        const isAdh = (cat.type === 'ADHESIVE') || brand.toUpperCase().includes('ROFF') || (cat.brand && cat.brand.toUpperCase() === 'ROFF')
-        const isHard = (cat.type === 'HARDWARE')
-        const unit = p.unit || cat.unit || (isSan ? 'pcs' : isAdh ? 'bags' : isHard ? 'sets' : 'boxes')
-        const displayPrice = isSan ? `₹${cat.online_price}/pc` : isAdh ? `₹${cat.online_price}/bag` : isHard ? `₹${cat.online_price}/set` : `₹${cat.sqft_price}/sqft`
+    const cat = p.category_id && p.category_id !== 'NO_CAT' ? categories.find(c => c.id === p.category_id) : null
+    const isSan = (cat && cat.type === 'SANITARY') || brandUpper.includes('PUPA') || (cat && (cat.brand || '').toUpperCase().includes('PUPA'))
+    const isAdh = (cat && cat.type === 'ADHESIVE') || brandUpper.includes('ROFF') || (cat && (cat.brand || '').toUpperCase().includes('ROFF'))
+    const isHard = (cat && cat.type === 'HARDWARE')
 
-        return {
-          ...p,
-          brand,
-          unit,
-          hsn_code,
-          tax_percent,
-          gst_percent,
-          purchase_rate,
-          mrp: cat.mrp,
-          online_price: cat.online_price,
-          sqft_price: cat.sqft_price,
-          price: displayPrice,
-          pcs_per_box: cat.pcs_per_box,
-          sqft_per_box: cat.sqft_per_box,
-          sqft_per_box_quotation: (isSan || isAdh || isHard) ? 1 : getQuotationSqft(cat),
-          weight_per_box: cat.weight_per_box,
-          category: cat.name // map display category in UI
-        }
-      }
-    } else if (p.category_id === 'NO_CAT') {
+    let rawUnit = p.unit || cat?.unit
+    if (!rawUnit || (String(rawUnit).toLowerCase().includes('box') && (isSan || isAdh || isHard))) {
+      rawUnit = isSan ? 'pcs' : isAdh ? 'bags' : isHard ? 'sets' : 'boxes'
+    }
+    const unit = normalizeServerUnit(rawUnit)
+
+    if (cat) {
+      const displayPrice = isSan ? `₹${cat.online_price}/pc` : isAdh ? `₹${cat.online_price}/bag` : isHard ? `₹${cat.online_price}/set` : `₹${cat.sqft_price}/sqft`
       return {
         ...p,
         brand,
+        unit,
         hsn_code,
         tax_percent,
         gst_percent,
         purchase_rate,
-        category: 'No Category'
+        mrp: cat.mrp,
+        online_price: cat.online_price,
+        sqft_price: cat.sqft_price,
+        price: displayPrice,
+        pcs_per_box: cat.pcs_per_box,
+        sqft_per_box: cat.sqft_per_box,
+        sqft_per_box_quotation: (isSan || isAdh || isHard) ? 1 : getQuotationSqft(cat),
+        weight_per_box: cat.weight_per_box,
+        category: cat.name
       }
     }
+
     return {
       ...p,
       brand,
+      unit,
       hsn_code,
       tax_percent,
       gst_percent,
-      purchase_rate
+      purchase_rate,
+      category: p.category_id === 'NO_CAT' ? 'No Category' : (p.category || 'General')
     }
   })
   res.json(joined)

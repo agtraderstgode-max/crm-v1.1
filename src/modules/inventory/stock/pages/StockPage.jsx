@@ -2,9 +2,16 @@ import { useState, useEffect, useMemo } from 'react'
 import { 
   Warehouse, AlertTriangle, Search, Filter, Layers, 
   Tag, FileText, CheckCircle2, TrendingUp, IndianRupee, 
-  Building2, PackageCheck, Edit3, X, Save, RefreshCw
+  Building2, PackageCheck, Edit3, X, Save, RefreshCw, Box
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { 
+  PRELOADED_UNITS, 
+  normalizeUnit, 
+  formatUnitQty, 
+  getUnitMeta, 
+  getUnitBadgeStyle 
+} from '@/lib/unitsConfig'
 
 export function StockPage() {
   const [products, setProducts] = useState([])
@@ -12,6 +19,7 @@ export function StockPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedBrand, setSelectedBrand] = useState('ALL')
   const [selectedHsn, setSelectedHsn] = useState('ALL')
+  const [selectedUnit, setSelectedUnit] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL') // 'ALL' | 'IN_STOCK' | 'LOW' | 'CRITICAL'
 
   // Quick Edit Modal
@@ -85,6 +93,9 @@ export function StockPage() {
       // HSN Filter
       if (selectedHsn !== 'ALL' && hsn !== selectedHsn) return false
 
+      // Unit Filter
+      if (selectedUnit !== 'ALL' && normalizeUnit(p.unit) !== selectedUnit) return false
+
       // Status Filter
       if (statusFilter === 'IN_STOCK' && stockVal <= 0) return false
       if (statusFilter === 'LOW' && stat !== 'Low') return false
@@ -99,33 +110,39 @@ export function StockPage() {
         const matchHsn = hsn.toLowerCase().includes(q)
         const matchCat = (p.category || '').toLowerCase().includes(q)
         const matchSize = (p.size || '').toLowerCase().includes(q)
-        return matchName || matchSku || matchBrand || matchHsn || matchCat || matchSize
+        const matchUnit = normalizeUnit(p.unit).includes(q)
+        return matchName || matchSku || matchBrand || matchHsn || matchCat || matchSize || matchUnit
       }
 
       return true
     })
-  }, [products, selectedBrand, selectedHsn, statusFilter, searchQuery])
+  }, [products, selectedBrand, selectedHsn, selectedUnit, statusFilter, searchQuery])
 
   // Compute Metrics across the currently filtered items (or overall)
   const metrics = useMemo(() => {
     let totalQty = 0
-    let totalBoxes = 0
-    let totalPcs = 0
-    let totalBags = 0
     let totalCostVal = 0
     let totalTaxVal = 0
     let totalRetailVal = 0
     let criticalCount = 0
     let lowCount = 0
 
+    const unitTotals = {
+      boxes: 0,
+      pcs: 0,
+      bags: 0,
+      sqft: 0,
+      nos: 0,
+      sets: 0,
+      kg: 0,
+      ltr: 0
+    }
+
     filteredProducts.forEach(p => {
       const stock = parseFloat(p.stock || 0)
-      const unit = (p.unit || 'boxes').toLowerCase()
+      const uKey = normalizeUnit(p.unit)
       totalQty += stock
-
-      if (unit.includes('pc') || unit.includes('item')) totalPcs += stock
-      else if (unit.includes('bag')) totalBags += stock
-      else totalBoxes += stock
+      unitTotals[uKey] = (unitTotals[uKey] || 0) + stock
 
       const pRate = parseFloat(p.purchase_rate || 0)
       const gstPct = parseFloat(p.gst_percent || p.tax_percent || 18)
@@ -147,9 +164,10 @@ export function StockPage() {
 
     return {
       totalQty,
-      totalBoxes,
-      totalPcs,
-      totalBags,
+      unitTotals,
+      totalBoxes: unitTotals.boxes || 0,
+      totalPcs: unitTotals.pcs || 0,
+      totalBags: unitTotals.bags || 0,
       totalCostVal: Math.round(totalCostVal),
       totalTaxVal: Math.round(totalTaxVal),
       totalRetailVal: Math.round(totalRetailVal),
@@ -262,14 +280,65 @@ export function StockPage() {
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-black text-slate-900">
-              {metrics.totalQty.toLocaleString('en-IN')} <span className="text-xs font-semibold text-slate-400">units</span>
+            {selectedBrand === 'PUPA' ? (
+              <div className="text-2xl font-black text-purple-900">
+                {metrics.totalPcs.toLocaleString('en-IN')} <span className="text-xs font-semibold text-purple-600">Pcs</span>
+              </div>
+            ) : selectedBrand === 'ROFF' ? (
+              <div className="text-2xl font-black text-amber-900">
+                {metrics.totalBags.toLocaleString('en-IN')} <span className="text-xs font-semibold text-amber-600">Bags</span>
+              </div>
+            ) : selectedBrand === 'KAG' ? (
+              <div className="text-2xl font-black text-blue-900">
+                {metrics.totalBoxes.toLocaleString('en-IN')} <span className="text-xs font-semibold text-blue-600">Boxes</span>
+              </div>
+            ) : selectedUnit !== 'ALL' ? (
+              <div className="text-2xl font-black text-slate-900">
+                {metrics.totalQty.toLocaleString('en-IN')} <span className="text-xs font-semibold text-slate-500">{getUnitMeta(selectedUnit).shortLabel}</span>
+              </div>
+            ) : (
+              <div className="text-2xl font-black text-slate-900">
+                {metrics.totalQty.toLocaleString('en-IN')} <span className="text-xs font-semibold text-slate-400">total units</span>
+              </div>
+            )}
+            <div className="mt-2 flex items-center gap-1.5 flex-wrap text-xs">
+              <span 
+                onClick={() => setSelectedUnit(selectedUnit === 'boxes' ? 'ALL' : 'boxes')}
+                className={cn(
+                  "rounded-md px-2 py-0.5 font-bold cursor-pointer transition border",
+                  selectedUnit === 'boxes' 
+                    ? "bg-blue-600 text-white border-blue-600" 
+                    : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                )}
+                title="Filter to Boxes (Tiles)"
+              >
+                {metrics.totalBoxes} Boxes
+              </span>
+              <span 
+                onClick={() => setSelectedUnit(selectedUnit === 'pcs' ? 'ALL' : 'pcs')}
+                className={cn(
+                  "rounded-md px-2 py-0.5 font-bold cursor-pointer transition border",
+                  selectedUnit === 'pcs' 
+                    ? "bg-purple-600 text-white border-purple-600" 
+                    : "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                )}
+                title="Filter to Pieces (Sanitaryware)"
+              >
+                {metrics.totalPcs} Pcs
+              </span>
+              <span 
+                onClick={() => setSelectedUnit(selectedUnit === 'bags' ? 'ALL' : 'bags')}
+                className={cn(
+                  "rounded-md px-2 py-0.5 font-bold cursor-pointer transition border",
+                  selectedUnit === 'bags' 
+                    ? "bg-amber-600 text-white border-amber-600" 
+                    : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                )}
+                title="Filter to Bags (Adhesives)"
+              >
+                {metrics.totalBags} Bags
+              </span>
             </div>
-            <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5 flex-wrap">
-              <span>{metrics.totalBoxes} Boxes</span> · 
-              <span>{metrics.totalPcs} Pcs</span> · 
-              <span>{metrics.totalBags} Bags</span>
-            </p>
           </div>
         </div>
 
@@ -397,7 +466,13 @@ export function StockPage() {
           <div className="flex items-center gap-4 text-xs font-bold flex-wrap">
             <div className="bg-white/80 rounded-lg px-3 py-1.5 border border-slate-200/50">
               <span className="text-[10px] text-slate-400 block uppercase">Stock Qty</span>
-              <span className="text-sm font-black">{activeBrandStats.totalQty} {selectedBrand === 'PUPA' ? 'Pcs' : selectedBrand === 'ROFF' ? 'Bags' : 'Boxes'}</span>
+              <span className="text-sm font-black">
+                {selectedBrand === 'PUPA' 
+                  ? `${activeBrandStats.totalPcs || activeBrandStats.totalQty} Pcs (Sanitaryware)` 
+                  : selectedBrand === 'ROFF' 
+                    ? `${activeBrandStats.totalBags || activeBrandStats.totalQty} Bags (Adhesives)` 
+                    : `${activeBrandStats.totalBoxes || activeBrandStats.totalQty} Boxes (Tiles)`}
+              </span>
             </div>
             <div className="bg-white/80 rounded-lg px-3 py-1.5 border border-slate-200/50">
               <span className="text-[10px] text-slate-400 block uppercase">Stock Purchase Value</span>
@@ -410,6 +485,72 @@ export function StockPage() {
           </div>
         </div>
       )}
+
+      {/* Unit Type Quick Filter Bar */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-blue-600" />
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+              Product Measurement Units (Preloaded)
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-500 font-medium">Filter by Unit:</span>
+            <select
+              value={selectedUnit}
+              onChange={e => setSelectedUnit(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 cursor-pointer"
+            >
+              <option value="ALL">🌐 All Units</option>
+              {PRELOADED_UNITS.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.fullName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Unit Filter Chips */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setSelectedUnit('ALL')}
+            className={cn(
+              "rounded-lg px-2.5 py-1 text-[11px] font-bold transition cursor-pointer border",
+              selectedUnit === 'ALL'
+                ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
+                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+            )}
+          >
+            ALL UNITS
+          </button>
+          {PRELOADED_UNITS.map(u => {
+            const isSel = selectedUnit === u.id
+            const qty = metrics.unitTotals[u.id] || 0
+            return (
+              <button
+                key={u.id}
+                onClick={() => setSelectedUnit(u.id)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-bold transition cursor-pointer border",
+                  isSel
+                    ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                )}
+              >
+                <span>{u.shortLabel}</span>
+                <span className={cn(
+                  "px-1.5 py-0.2 rounded text-[10px]",
+                  isSel ? "bg-white/20 text-white font-extrabold" : "bg-slate-100 text-slate-600"
+                )}>
+                  {qty}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* HSN Code Quick Filter Bar */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
@@ -583,10 +724,21 @@ export function StockPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 font-bold text-slate-800">
-                        {s.stock} {s.unit || 'boxes'}
+                        <div className="flex items-center gap-1.5">
+                          <span>{s.stock}</span>
+                          <span className={cn(
+                            "rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider border",
+                            getUnitBadgeStyle(s.unit)
+                          )}>
+                            {getUnitMeta(s.unit).shortLabel}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-5 py-3.5 text-emerald-700 font-bold">
-                        {availableQty}
+                        <span>{availableQty}</span>
+                        <span className="text-[11px] font-medium text-slate-400 ml-1">
+                          {getUnitMeta(s.unit).singular}
+                        </span>
                       </td>
                       <td className="px-5 py-3.5 font-medium text-slate-600">
                         ₹{pRate.toLocaleString('en-IN')}
@@ -722,18 +874,22 @@ export function StockPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">
-                    Unit Type
+                    Measurement Unit (Preloaded)
                   </label>
                   <select
                     value={editForm.unit}
                     onChange={e => setEditForm({ ...editForm, unit: e.target.value })}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:border-blue-500 cursor-pointer"
                   >
-                    <option value="boxes">Boxes (Tiles)</option>
-                    <option value="pcs">Pieces (Sanitaryware)</option>
-                    <option value="bags">Bags (Adhesives)</option>
-                    <option value="sets">Sets (Hardware)</option>
+                    {PRELOADED_UNITS.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.fullName} — {u.category}
+                      </option>
+                    ))}
                   </select>
+                  <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                    {getUnitMeta(editForm.unit).description}
+                  </p>
                 </div>
               </div>
 

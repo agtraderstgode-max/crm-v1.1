@@ -6,6 +6,7 @@ import {
   CreditCard, ShieldAlert, Award
 } from 'lucide-react'
 import { cn, fmtDate } from '@/lib/utils'
+import { normalizeUnit } from '@/lib/unitsConfig'
 
 // Helper to parse numerical currency string
 function parseAmount(amtStr) {
@@ -87,7 +88,20 @@ export function AnalysisPage() {
     : '100.0'
 
   // 4. Inventory Health & Stock Analysis
-  const totalStockBoxes = products.reduce((sum, p) => sum + (parseInt(p.stock) || 0), 0)
+  let totalStockBoxes = 0
+  let totalStockPcs = 0
+  let totalStockBags = 0
+  let totalStockUnits = 0
+
+  products.forEach(p => {
+    const s = parseInt(p.stock) || 0
+    const u = normalizeUnit(p.unit)
+    totalStockUnits += s
+    if (u === 'pcs') totalStockPcs += s
+    else if (u === 'bags') totalStockBags += s
+    else totalStockBoxes += s
+  })
+
   const lowStockCount = products.filter(p => (parseInt(p.stock) || 0) <= (parseInt(p.min) || 20)).length
   const totalProductsCount = products.length
 
@@ -195,7 +209,10 @@ export function AnalysisPage() {
               <Package className="h-5 w-5" />
             </div>
           </div>
-          <p className="mt-3 text-2xl font-black text-slate-900">{totalStockBoxes.toLocaleString('en-IN')} <span className="text-sm font-semibold text-slate-400">boxes</span></p>
+          <p className="mt-3 text-2xl font-black text-slate-900">{totalStockUnits.toLocaleString('en-IN')} <span className="text-sm font-semibold text-slate-400">units</span></p>
+          <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+            {totalStockBoxes} Boxes · {totalStockPcs} Pcs · {totalStockBags} Bags
+          </p>
           <div className="mt-3 flex items-center justify-between text-xs">
             <span className="text-slate-500 font-medium">{totalProductsCount} SKUs Listed</span>
             {lowStockCount > 0 ? (

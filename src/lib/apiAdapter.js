@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient'
 import { handleAiChatRequest } from './ai/aiOrchestrator'
+import { normalizeUnit, detectDefaultUnit, PRELOADED_UNITS } from './unitsConfig'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const jsonResponse = (data, status = 200) => {
@@ -857,6 +858,11 @@ function getQuotationSqft(cat, customMap = {}) {
   return parseFloat(cat.sqft_per_box || 15.5);
 }
 
+  // ─── /api/units ─────────────────────────────────────────────────────────────
+  if (pathname === '/api/units' && method === 'GET') {
+    return jsonResponse(PRELOADED_UNITS)
+  }
+
   // ─── /api/products & /api/categories ───────────────────────────────────────
   if (pathname === '/api/products' && method === 'GET') {
     let prods = []
@@ -913,7 +919,11 @@ function getQuotationSqft(cat, customMap = {}) {
         ? p.purchase_rate 
         : (meta.purchase_rate != null && meta.purchase_rate > 0 ? meta.purchase_rate : estimatedRate)
 
-      const unit = p.unit || cat?.unit || (isSan ? 'pcs' : isAdh ? 'bags' : isHard ? 'sets' : 'boxes')
+      let rawUnit = meta.unit || p.unit || cat?.unit
+      if (!rawUnit || (String(rawUnit).toLowerCase().includes('box') && (isSan || isAdh || isHard))) {
+        rawUnit = isSan ? 'pcs' : isAdh ? 'bags' : isHard ? 'sets' : 'boxes'
+      }
+      const unit = normalizeUnit(rawUnit)
       const displayPrice = isSan ? `₹${cat?.online_price || 0}/pc` : isAdh ? `₹${cat?.online_price || 0}/bag` : isHard ? `₹${cat?.online_price || 0}/set` : `₹${cat?.sqft_price || 0}/sqft`
 
       if (cat) {
@@ -959,7 +969,7 @@ function getQuotationSqft(cat, customMap = {}) {
     const { error } = await supabase.from('products').insert([newProduct])
     if (error) return jsonResponse({ error: error.message }, 400)
 
-    if (hsn_code || tax_percent || gst_percent || purchase_rate || body.brand) {
+    if (hsn_code || tax_percent || gst_percent || purchase_rate || body.brand || body.unit) {
       try {
         const { data: taxSetting } = await supabase.from('settings').select('value').eq('key', 'product_hsn_tax_map').maybeSingle()
         const currentMap = taxSetting?.value || {}
@@ -968,7 +978,8 @@ function getQuotationSqft(cat, customMap = {}) {
           tax_percent: parseFloat(tax_percent || gst_percent) || 18,
           gst_percent: parseFloat(gst_percent || tax_percent) || 18,
           purchase_rate: parseFloat(purchase_rate) || 0,
-          brand: body.brand || ''
+          brand: body.brand || '',
+          unit: body.unit ? normalizeUnit(body.unit) : ''
         }
         await supabase.from('settings').upsert([{ key: 'product_hsn_tax_map', value: currentMap }], { onConflict: 'key' })
       } catch (err) {
@@ -1000,7 +1011,7 @@ function getQuotationSqft(cat, customMap = {}) {
     const { error } = await supabase.from('products').update(updateData).eq('id', id)
     if (error) return jsonResponse({ error: error.message }, 400)
 
-    if (hsn_code || tax_percent || gst_percent || purchase_rate || body.brand) {
+    if (hsn_code || tax_percent || gst_percent || purchase_rate || body.brand || body.unit) {
       try {
         const { data: taxSetting } = await supabase.from('settings').select('value').eq('key', 'product_hsn_tax_map').maybeSingle()
         const currentMap = taxSetting?.value || {}
@@ -1010,7 +1021,8 @@ function getQuotationSqft(cat, customMap = {}) {
           tax_percent: parseFloat(tax_percent || gst_percent) || currentMap[id]?.tax_percent || 18,
           gst_percent: parseFloat(gst_percent || tax_percent) || currentMap[id]?.gst_percent || 18,
           purchase_rate: parseFloat(purchase_rate) != null ? parseFloat(purchase_rate) : (currentMap[id]?.purchase_rate || 0),
-          brand: body.brand || currentMap[id]?.brand || ''
+          brand: body.brand || currentMap[id]?.brand || '',
+          unit: body.unit ? normalizeUnit(body.unit) : (currentMap[id]?.unit || '')
         }
         await supabase.from('settings').upsert([{ key: 'product_hsn_tax_map', value: currentMap }], { onConflict: 'key' })
       } catch (err) {

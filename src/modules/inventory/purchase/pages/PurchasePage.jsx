@@ -207,13 +207,15 @@ function InvoiceDetailModal({ invoice, onClose }) {
                 )}
               </p>
               <p className="font-bold text-slate-600">
-                Invoice Declared Boxes:{' '}
-                <span className="text-slate-800">{invoice.total_qty || 0} boxes</span>
+                Invoice Declared Qty:{' '}
+                <span className="text-slate-800">
+                  {invoice.total_qty || 0} {(invoice.supplier_name || '').toUpperCase().includes('PUPA') ? 'pcs' : (invoice.supplier_name || '').toUpperCase().includes('ROFF') ? 'bags' : 'boxes'}
+                </span>
               </p>
               <p className="font-bold text-slate-600">
-                Extracted Sum of Boxes:{' '}
+                Extracted Sum of Items:{' '}
                 <span className="text-slate-800">
-                  {(invoice.items || []).reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)} boxes
+                  {(invoice.items || []).reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)} {(invoice.supplier_name || '').toUpperCase().includes('PUPA') ? 'pcs' : (invoice.supplier_name || '').toUpperCase().includes('ROFF') ? 'bags' : 'boxes'}
                 </span>
                 {parseInt(invoice.total_qty || 0) === (invoice.items || []).reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0) ? (
                   <span className="text-emerald-600 font-extrabold ml-1.5 inline-flex items-center gap-0.5">
@@ -704,13 +706,13 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                     )}
                   </p>
                   <p>
-                    <span className="font-bold text-slate-800">Total Boxes:</span> {scanResult.total_qty || 0} boxes 
+                    <span className="font-bold text-slate-800">Total Quantity:</span> {scanResult.total_qty || 0} {(scanResult.supplier_name || '').toUpperCase().includes('PUPA') ? 'pcs' : (scanResult.supplier_name || '').toUpperCase().includes('ROFF') ? 'bags' : 'boxes'} 
                     {parseInt(scanResult.total_qty || 0) === linkedItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0) ? (
                       <span className="text-emerald-600 font-bold ml-1.5 inline-flex items-center gap-0.5" title="Matches sum of extracted quantities">
                         <Check className="h-3 w-3 stroke-[3]" /> Matches Extracted
                       </span>
                     ) : (
-                      <span className="text-rose-600 font-bold ml-1.5 inline-flex items-center gap-0.5" title={`Mismatch: sum of extracted items is ${linkedItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)} boxes`}>
+                      <span className="text-rose-600 font-bold ml-1.5 inline-flex items-center gap-0.5" title={`Mismatch: sum of extracted items is ${linkedItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)}`}>
                         <ShieldAlert className="h-3 w-3" /> Mismatch (Extracted: {linkedItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)})
                       </span>
                     )}
@@ -746,7 +748,7 @@ function InvoiceImportModal({ isOpen, onClose, onRefresh, products }) {
                             </span>
                           </td>
                           <td className="px-4 py-3 font-semibold text-slate-700 text-xs">
-                            {item.quantity} boxes
+                            {item.quantity} {item.unit || ((item.brand || scanResult?.supplier_name || '').toUpperCase().includes('PUPA') ? 'pcs' : (item.brand || scanResult?.supplier_name || '').toUpperCase().includes('ROFF') ? 'bags' : 'boxes')}
                           </td>
                           <td className="px-4 py-3">
                             <select
@@ -1392,7 +1394,9 @@ function ApproveStockModal({ isOpen, invoice, onClose, onRefresh, products }) {
             <div className="space-y-1">
               <p className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">Bill Totals</p>
               <p><span className="font-bold text-slate-800">Total Declared Items:</span> {invoice.total_items || invoice.items?.length || 0} items</p>
-              <p><span className="font-bold text-slate-800">Total Boxes:</span> {invoice.total_qty || 0} boxes</p>
+              <p>
+                <span className="font-bold text-slate-800">Total Quantity:</span> {invoice.total_qty || 0} {(invoice.supplier_name || '').toUpperCase().includes('PUPA') ? 'pcs' : (invoice.supplier_name || '').toUpperCase().includes('ROFF') ? 'bags' : 'boxes'}
+              </p>
               <p><span className="font-bold text-slate-800">Net Total Bill:</span> ₹{parseFloat(invoice.total_amount || 0).toLocaleString('en-IN')}</p>
             </div>
           </div>
@@ -2298,10 +2302,10 @@ export function PurchasePage() {
       {/* Overview Metric Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Invoices / Boxes</span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Invoices / Items</span>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-xl font-extrabold text-slate-800">{filteredInvoices.length}</span>
-            <span className="text-xs text-slate-500 font-semibold">bills · {totalBoxes} boxes</span>
+            <span className="text-xs text-slate-500 font-semibold">bills · {totalBoxes} units</span>
           </div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
@@ -2401,13 +2405,16 @@ export function PurchasePage() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    {['Invoice No','Invoice Date','Supplier Company','GSTIN','Total Boxes','Net Total Bill','Stock Update',''].map(h => (
+                    {['Invoice No','Invoice Date','Supplier Company','GSTIN','Total Quantity','Net Total Bill','Stock Update',''].map(h => (
                       <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {filteredInvoices.map((inv, idx) => (
+                  {filteredInvoices.map((inv, idx) => {
+                    const supUpper = (inv.supplier_name || '').toUpperCase()
+                    const invUnit = supUpper.includes('PUPA') ? 'pcs' : supUpper.includes('ROFF') ? 'bags' : 'boxes'
+                    return (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-3.5 font-bold text-slate-800">{inv.invoice_no}</td>
                       <td className="px-5 py-3.5 text-slate-600 font-semibold">{fmtDate(inv.date)}</td>
@@ -2420,7 +2427,7 @@ export function PurchasePage() {
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{inv.supplier_gstin || 'N/A'}</td>
-                      <td className="px-5 py-3.5 font-bold text-slate-700">{inv.total_qty} boxes</td>
+                      <td className="px-5 py-3.5 font-bold text-slate-700">{inv.total_qty} {invUnit}</td>
                       <td className="px-5 py-3.5 font-bold text-blue-600">
                         ₹{parseFloat(inv.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
@@ -2460,7 +2467,8 @@ export function PurchasePage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             )}
@@ -2539,7 +2547,7 @@ export function PurchasePage() {
                       <th className="px-3 py-3">Company / Brand</th>
                       <th className="px-3 py-3">Size / Finish</th>
                       <th className="px-3 py-3">HSN Code</th>
-                      <th className="px-3 py-3 text-right">Qty (Boxes)</th>
+                      <th className="px-3 py-3 text-right">Quantity</th>
                       <th className="px-3 py-3 text-right">Buy Rate (₹)</th>
                       <th className="px-3 py-3 text-right">Taxable (₹)</th>
                       <th className="px-3 py-3 text-right">GST % (₹)</th>
@@ -2548,7 +2556,10 @@ export function PurchasePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {purchasedProducts.map((p) => (
+                    {purchasedProducts.map((p) => {
+                      const compUpper = (p.company || '').toUpperCase()
+                      const itemUnit = p.unit || (compUpper.includes('PUPA') ? 'pcs' : compUpper.includes('ROFF') ? 'bags' : 'boxes')
+                      return (
                       <tr key={p.key} className="hover:bg-slate-50/70 transition-colors">
                         <td className="px-4 py-3">
                           <span className="font-bold text-slate-800 block text-xs">{p.product_name}</span>
@@ -2569,7 +2580,7 @@ export function PurchasePage() {
                           </span>
                         </td>
                         <td className="px-3 py-3 text-right font-bold text-slate-800">
-                          {p.quantity}
+                          {p.quantity} {itemUnit}
                         </td>
                         <td className="px-3 py-3 text-right font-mono text-slate-700">
                           ₹{p.rate.toFixed(2)}
@@ -2600,7 +2611,8 @@ export function PurchasePage() {
                           )}
                         </td>
                       </tr>
-                    ))}
+                    )
+                  })}
                   </tbody>
                 </table>
               </div>
@@ -2673,7 +2685,7 @@ export function PurchasePage() {
                           </span>
                         </td>
                         <td className="px-3 py-3.5 text-right font-bold text-slate-800 text-xs font-mono">
-                          {h.total_qty} boxes
+                          {h.total_qty} {h.hsn_code === '69101000' ? 'pcs' : h.hsn_code === '32141000' ? 'bags' : 'boxes'}
                         </td>
                         <td className="px-3 py-3.5 text-right font-mono font-bold text-slate-800">
                           ₹{h.taxable_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -2708,7 +2720,7 @@ export function PurchasePage() {
                         TOTALS ({hsnSummary.length} HSN CODES)
                       </td>
                       <td className="px-3 py-3 text-right font-mono text-xs">
-                        {hsnSummary.reduce((acc, h) => acc + h.total_qty, 0)} boxes
+                        {hsnSummary.reduce((acc, h) => acc + h.total_qty, 0)} units
                       </td>
                       <td className="px-3 py-3 text-right font-mono">
                         ₹{taxableTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
