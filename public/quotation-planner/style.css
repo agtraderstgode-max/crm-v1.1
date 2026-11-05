@@ -1225,7 +1225,7 @@ input::placeholder { color: var(--text3); }
 @media print {
   @page {
     size: A4 portrait;
-    margin: 12mm 15mm;
+    margin: 10mm 12mm;
   }
   
   html, body {
@@ -1237,18 +1237,25 @@ input::placeholder { color: var(--text3); }
     margin: 0 !important;
     padding: 0 !important;
     background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   
   /* Hide screen layout entirely */
-  .header, .main, .ambient-bg { display: none !important; }
+  .header, .main, .ambient-bg, .no-print { display: none !important; }
   
   /* Reset print container layout */
   .print-area {
     display: block !important;
-    width: 100%;
-    background: #fff;
-    color: #000;
-    font-family: 'Inter', sans-serif;
+    width: 100% !important;
+    max-width: 186mm !important;
+    margin: 0 auto !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', Arial, sans-serif !important;
+    box-sizing: border-box !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   .print-header {
     display: flex; justify-content: space-between; align-items: center;
@@ -1274,9 +1281,11 @@ input::placeholder { color: var(--text3); }
     background: #7c3aed; color: #fff;
     padding: 5px 6px; text-align: left;
     font-size: 7.5pt; white-space: nowrap;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   .print-table td { padding: 5px 6px; border-bottom: 1px solid #e5e7eb; }
-  .print-table tbody tr:nth-child(even) td { background: #f9fafb; }
+  .print-table tbody tr:nth-child(even) td { background: #f9fafb; -webkit-print-color-adjust: exact !important; }
   .final-boxes-cell { font-weight: 800; color: #7c3aed; }
   .total-wt-cell { font-weight: 700; color: #059669; }
 
@@ -1316,13 +1325,18 @@ input::placeholder { color: var(--text3); }
   body.print-quote-mode .print-quotation-area { display: block !important; }
   
   .print-quotation-area {
-    background: #fff;
-    color: #1a1a1a;
-    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-    width: 100%;
-    padding-top: 0.2cm;
-    font-size: 8pt;
-    line-height: 1.35;
+    background: #fff !important;
+    color: #111 !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', Arial, sans-serif !important;
+    width: 100% !important;
+    max-width: 186mm !important;
+    margin: 0 auto !important;
+    padding-top: 0.2cm !important;
+    font-size: 8pt !important;
+    line-height: 1.35 !important;
+    box-sizing: border-box !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   .print-quote-company-header {
     display: none !important;
@@ -1331,126 +1345,206 @@ input::placeholder { color: var(--text3); }
     display: none !important;
   }
   .print-quote-header {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-bottom: 0.3cm;
-    border-bottom: 1.2px solid #333;
-    padding-bottom: 0.1cm;
+    display: block !important;
+    text-align: center !important;
+    margin-bottom: 0.35cm !important;
+    border-bottom: 1.5px solid #222 !important;
+    padding-bottom: 0.15cm !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
   .print-quote-title {
-    font-size: 10pt;
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    color: #000;
-    text-transform: uppercase;
+    font-size: 11pt !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.2em !important;
+    color: #000 !important;
+    text-transform: uppercase !important;
+    margin: 0 !important;
   }
+  
+  /* Robust 2-column layout using display: table for WebKit/iPad stability */
   .print-quote-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 0.35cm;
-    font-size: 8pt;
+    display: table !important;
+    width: 100% !important;
+    table-layout: fixed !important;
+    margin-bottom: 0.35cm !important;
+    box-sizing: border-box !important;
+    border: none !important;
   }
   .print-quote-to {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    display: table-cell !important;
+    width: 55% !important;
+    vertical-align: top !important;
+    text-align: left !important;
+    padding-right: 10px !important;
+    box-sizing: border-box !important;
   }
   .print-quote-numbers {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+    display: table-cell !important;
+    width: 45% !important;
+    vertical-align: top !important;
+    text-align: right !important;
+    box-sizing: border-box !important;
   }
   .print-meta-label {
-    font-weight: 600;
-    color: #333;
-    font-size: 7.5pt;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
+    font-weight: 700 !important;
+    color: #444 !important;
+    font-size: 7.5pt !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.03em !important;
   }
   .print-meta-val {
-    color: #000;
-    font-weight: 700;
-    font-size: 8.5pt;
+    color: #000 !important;
+    font-weight: 700 !important;
+    font-size: 8.5pt !important;
   }
+  
   /* Right-side meta alignment table */
   .print-meta-table {
-    border-collapse: collapse;
-    border: none;
+    border-collapse: collapse !important;
+    border: none !important;
+    width: auto !important;
+    margin-left: auto !important;
   }
   .print-meta-table td {
-    border: none;
-    padding: 1.5px 0;
-    vertical-align: top;
-    font-size: 8pt;
+    border: none !important;
+    padding: 1.5px 0 !important;
+    vertical-align: middle !important;
+    font-size: 8pt !important;
   }
   .print-meta-table .print-meta-label {
-    white-space: nowrap;
-    text-align: right;
-    padding-right: 4px;
-    font-size: 7.5pt;
+    white-space: nowrap !important;
+    text-align: right !important;
+    padding-right: 6px !important;
+    font-size: 7.5pt !important;
   }
   .print-meta-table .print-meta-sep {
-    padding: 1.5px 4px;
-    font-weight: 600;
-    color: #333;
+    padding: 1.5px 4px !important;
+    font-weight: 700 !important;
+    color: #222 !important;
+    text-align: center !important;
   }
   .print-meta-table .print-meta-val {
-    text-align: left;
-    padding-left: 4px;
-    font-weight: 700;
-    font-size: 8.5pt;
-    white-space: nowrap;
+    text-align: left !important;
+    padding-left: 4px !important;
+    font-weight: 700 !important;
+    font-size: 8.5pt !important;
+    white-space: nowrap !important;
   }
+  
+  /* Quotation Items Table */
   .print-quote-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 8pt;
-    margin-bottom: 0.35cm;
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 8pt !important;
+    margin-bottom: 0.35cm !important;
+    box-sizing: border-box !important;
   }
   .print-quote-table th {
-    border: 1px solid #444;
-    background: #f0f0f0;
-    color: #000;
-    padding: 4px 6px;
-    font-weight: 700;
-    font-size: 7.5pt;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    text-align: left;
+    border: 1px solid #333 !important;
+    background: #f0f0f0 !important;
+    color: #000 !important;
+    padding: 5px 6px !important;
+    font-weight: 700 !important;
+    font-size: 7.5pt !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.03em !important;
+    box-sizing: border-box !important;
+    vertical-align: middle !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   .print-quote-table td {
-    border: 1px solid #666;
-    padding: 4px 6px;
-    color: #1a1a1a;
-    font-size: 8pt;
+    border: 1px solid #666 !important;
+    padding: 4px 6px !important;
+    color: #1a1a1a !important;
+    font-size: 8pt !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
   }
+  
+  /* Specific Column Widths & Alignments */
+  .print-quote-table .col-sl {
+    width: 6% !important;
+    text-align: center !important;
+  }
+  .print-quote-table .col-desc {
+    width: 44% !important;
+    text-align: left !important;
+  }
+  .print-quote-table .col-qty {
+    width: 14% !important;
+    text-align: center !important;
+  }
+  .print-quote-table .col-sqft {
+    width: 12% !important;
+    text-align: right !important;
+    white-space: nowrap !important;
+  }
+  .print-quote-table .col-rate {
+    width: 11% !important;
+    text-align: right !important;
+    white-space: nowrap !important;
+  }
+  .print-quote-table .col-amt {
+    width: 13% !important;
+    text-align: right !important;
+    white-space: nowrap !important;
+    font-weight: 700 !important;
+  }
+
   .print-quote-table tfoot td {
-    border: 1px solid #444;
-    padding: 4px 6px;
-    font-size: 8.5pt;
-    font-weight: 700;
+    border: 1px solid #333 !important;
+    padding: 5px 6px !important;
+    font-size: 8.5pt !important;
+    font-weight: 800 !important;
+    background: #fafafa !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
+  .print-quote-table .quote-total-label {
+    text-align: right !important;
+    font-weight: 800 !important;
+    padding-right: 12px !important;
+  }
+  .print-quote-table .quote-total-amt {
+    text-align: right !important;
+    font-weight: 800 !important;
+    color: #000 !important;
+  }
+
   .print-quote-words {
-    border: 1px solid #666;
-    padding: 0.2cm 0.3cm;
-    margin-bottom: 0.35cm;
-    font-size: 8pt;
+    border: 1px solid #555 !important;
+    padding: 0.2cm 0.35cm !important;
+    margin-bottom: 0.4cm !important;
+    font-size: 8pt !important;
+    box-sizing: border-box !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
   .print-quote-footer {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 1cm;
+    display: table !important;
+    width: 100% !important;
+    table-layout: fixed !important;
+    margin-top: 0.8cm !important;
+    box-sizing: border-box !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
   .print-quote-footer .print-sign-block {
-    font-size: 7.5pt;
-    text-align: center;
+    display: table-cell !important;
+    width: 50% !important;
+    font-size: 7.5pt !important;
+    text-align: center !important;
+    vertical-align: bottom !important;
   }
   .print-quote-footer .print-sign-line {
-    width: 130px;
-    border-top: 1px solid #333;
-    margin-bottom: 4px;
+    width: 140px !important;
+    border-top: 1px solid #333 !important;
+    margin: 0 auto 5px auto !important;
   }
 }
 

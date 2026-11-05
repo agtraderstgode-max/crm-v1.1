@@ -17,8 +17,13 @@ export function QuotationsPage() {
 
   const handlePrint = () => {
     if (iframeRef.current && iframeRef.current.contentWindow) {
-      iframeRef.current.contentWindow.focus()
-      iframeRef.current.contentWindow.print()
+      const win = iframeRef.current.contentWindow
+      if (typeof win.printQuotation === 'function') {
+        win.printQuotation()
+        return
+      }
+      win.focus()
+      win.print()
     }
   }
 

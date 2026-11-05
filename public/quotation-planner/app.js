@@ -1795,6 +1795,59 @@ function printPlan() {
     </div>
   `;
 
+  document.body.classList.remove('print-quote-mode');
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const inIframe = (window.self !== window.top);
+
+  if (isIOS && inIframe) {
+    const planHtml = document.getElementById('print-area').outerHTML;
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Box Planning Sheet - AG TRADERS</title>
+  <link rel="stylesheet" href="/quotation-planner/style.css">
+  <style>
+    @page { size: A4 portrait; margin: 10mm 12mm; }
+    html, body {
+      background: #fff !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    .print-area {
+      display: block !important;
+      width: 100% !important;
+      max-width: 186mm !important;
+      margin: 0 auto !important;
+      padding: 4mm 0 !important;
+    }
+  </style>
+</head>
+<body>
+  ${planHtml}
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.focus();
+        window.print();
+      }, 350);
+    };
+  <\/script>
+</body>
+</html>`);
+      printWin.document.close();
+      return;
+    }
+  }
+
   requestAnimationFrame(() => {
     requestAnimationFrame(() => window.print());
   });
@@ -2333,14 +2386,15 @@ function printQuotation() {
     const hasCoverage = item.coverage && item.coverage > 0;
     const sqftRateVal = hasCoverage ? ('₹ ' + item.sqftRate.toFixed(2)) : '–';
     const unitText = item.unit || 'Boxes';
+    const itemTotal = (item.quantity * item.rate);
     return `
       <tr>
-        <td>${idx + 1}</td>
-        <td>${escHtml(item.description)}</td>
-        <td>${item.quantity} <span style="font-size: 0.85em; color: #555; font-weight: 500; margin-left: 2px;">${escHtml(unitText)}</span></td>
-        <td>${sqftRateVal}</td>
-        <td>₹ ${item.rate.toFixed(2)}</td>
-        <td>₹ ${(item.quantity * item.rate).toFixed(2)}</td>
+        <td class="col-sl">${idx + 1}</td>
+        <td class="col-desc">${escHtml(item.description)}</td>
+        <td class="col-qty">${item.quantity} <span style="font-size: 0.8em; color: #555; font-weight: 600; margin-left: 2px;">${escHtml(unitText)}</span></td>
+        <td class="col-sqft">${sqftRateVal}</td>
+        <td class="col-rate">₹ ${item.rate.toFixed(2)}</td>
+        <td class="col-amt">₹ ${itemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
       </tr>
     `;
   }).join('');
@@ -2349,6 +2403,59 @@ function printQuotation() {
   document.getElementById('print-quote-grand-total').textContent = '₹ ' + grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   document.getElementById('print-quote-amount-words').textContent = numberToWordsINR(Math.round(grandTotal));
   
+  document.body.classList.add('print-quote-mode');
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const inIframe = (window.self !== window.top);
+
+  if (isIOS && inIframe) {
+    const quoteHtml = document.getElementById('print-quotation-area').outerHTML;
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Quotation - ${escHtml(quoteNo)}</title>
+  <link rel="stylesheet" href="/quotation-planner/style.css">
+  <style>
+    @page { size: A4 portrait; margin: 10mm 12mm; }
+    html, body {
+      background: #fff !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    .print-quotation-area {
+      display: block !important;
+      width: 100% !important;
+      max-width: 186mm !important;
+      margin: 0 auto !important;
+      padding: 5mm 0 !important;
+    }
+  </style>
+</head>
+<body class="print-quote-mode">
+  ${quoteHtml}
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.focus();
+        window.print();
+      }, 350);
+    };
+  <\/script>
+</body>
+</html>`);
+      printWin.document.close();
+      return;
+    }
+  }
+
   requestAnimationFrame(() => {
     requestAnimationFrame(() => window.print());
   });

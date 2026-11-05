@@ -594,19 +594,19 @@
     <table class="print-quote-table">
       <thead>
         <tr>
-          <th style="width: 35px;">Sl No</th>
-          <th>Description of Goods</th>
-          <th style="width: 65px;">Quantity</th>
-          <th style="width: 95px;">Sqft Rate / Online Rate</th>
-          <th style="width: 80px;">Rate</th>
-          <th style="width: 100px;">Amount</th>
+          <th class="col-sl">Sl No</th>
+          <th class="col-desc">Description of Goods</th>
+          <th class="col-qty">Quantity</th>
+          <th class="col-sqft">Sqft / Unit</th>
+          <th class="col-rate">Rate (₹)</th>
+          <th class="col-amt">Amount (₹)</th>
         </tr>
       </thead>
       <tbody id="print-quote-tbody"></tbody>
       <tfoot>
         <tr>
-          <td colspan="5" style="text-align: right; font-weight: 700;">Total:</td>
-          <td id="print-quote-grand-total" style="font-weight: 700;">₹ 0.00</td>
+          <td colspan="5" class="quote-total-label">Total:</td>
+          <td id="print-quote-grand-total" class="col-amt quote-total-amt">₹ 0.00</td>
         </tr>
       </tfoot>
     </table>
